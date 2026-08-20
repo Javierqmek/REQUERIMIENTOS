@@ -1,32 +1,16 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, Home, LogOut, ShieldCheck, Shirt, UserRound } from "lucide-react";
+import { usePathname,useRouter } from "next/navigation";
+import { ChevronDown,ClipboardList,Home,LogOut,ShieldCheck,Shirt,UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { useState } from "react";
+import { useEffect,useRef,useState } from "react";
 
-export function AppShell({ profile, children }: { profile: Profile; children: React.ReactNode }) {
-  const pathname = usePathname(); const router = useRouter();
-  const [confirming,setConfirming]=useState(false); const [loggingOut,setLoggingOut]=useState(false);
-  const links = [{ href: "/inicio", label: "Inicio", icon: Home }, { href: "/requerimientos", label: "Mis requerimientos", icon: ClipboardList }];
-  async function logout() { setLoggingOut(true); await createClient().auth.signOut(); router.replace("/login"); router.refresh(); }
-  return <div className="min-h-screen pb-24">
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <Link href="/inicio" className="flex items-center gap-3 font-extrabold text-blue-700"><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-white"><Shirt size={23}/></span><span className="hidden sm:block">Uniformes</span></Link>
-        <div className="flex items-center gap-2 sm:gap-3">
-          {profile.role === "admin" && <Link className="btn bg-blue-50 text-blue-700" href="/admin/requerimientos"><ShieldCheck size={18}/><span className="hidden sm:inline">Administración</span></Link>}
-          <div className="hidden border-l border-slate-200 pl-3 md:block"><p className="max-w-40 truncate text-sm font-bold text-slate-700">{profile.nombre}</p><p className="text-xs capitalize text-slate-500">{profile.role}</p></div>
-          <button className="btn btn-secondary px-3 sm:px-4" onClick={()=>setConfirming(true)}><UserRound size={18}/><span className="hidden lg:inline">{profile.nombre}</span><LogOut size={17}/><span className="hidden sm:inline">Cerrar sesión</span></button>
-        </div>
-      </div>
-    </header>
-    <main className="mx-auto max-w-6xl p-4 sm:p-6">{children}</main>
-    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur sm:hidden"><div className="grid grid-cols-2">
-      {links.map(({href,label,icon:Icon}) => <Link key={href} href={href} className={`flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-bold ${pathname === href ? "text-blue-700" : "text-slate-500"}`}><Icon size={21}/>{label}</Link>)}
-    </div></nav>
-    <ConfirmDialog open={confirming} busy={loggingOut} onCancel={()=>setConfirming(false)} onConfirm={logout}/>
-  </div>;
+export function AppShell({profile,children}:{profile:Profile;children:React.ReactNode}){
+  const pathname=usePathname();const router=useRouter();const menuRef=useRef<HTMLDivElement>(null);const [menuOpen,setMenuOpen]=useState(false);const [confirming,setConfirming]=useState(false);const [loggingOut,setLoggingOut]=useState(false);
+  const links=[{href:"/inicio",label:"Inicio",icon:Home},{href:"/requerimientos",label:"Mis requerimientos",icon:ClipboardList},...(profile.role==="admin"?[{href:"/admin/requerimientos",label:"Administración",icon:ShieldCheck}]:[])];
+  useEffect(()=>{function close(event:MouseEvent){if(menuRef.current&&!menuRef.current.contains(event.target as Node))setMenuOpen(false)}document.addEventListener("mousedown",close);return()=>document.removeEventListener("mousedown",close)},[]);
+  async function logout(){setLoggingOut(true);await createClient().auth.signOut();router.replace("/login");router.refresh();}
+  return <div className="min-h-screen pb-20 sm:pb-0"><header className="sticky top-0 z-30 border-b border-[#DCE3EC] bg-white/95 backdrop-blur"><div className="mx-auto flex h-16 max-w-7xl items-center gap-7 px-4 sm:px-6"><Link href="/inicio" className="flex shrink-0 items-center gap-2.5 text-[#0B1F3A]"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#0B1F3A] text-white"><Shirt size={19}/></span><span className="text-[16px] font-semibold tracking-tight">Uniformes</span></Link><nav className="hidden h-full items-center gap-1 sm:flex" aria-label="Navegación principal">{links.map(({href,label})=>{const active=pathname===href||pathname.startsWith(`${href}/`);return <Link key={href} href={href} className={`flex h-full items-center border-b-2 px-3 text-sm font-medium ${active?"border-[#2563EB] text-[#174EA6]":"border-transparent text-[#607089] hover:text-[#172033]"}`}>{label}</Link>})}</nav><div className="relative ml-auto" ref={menuRef}><button aria-expanded={menuOpen} aria-haspopup="menu" onClick={()=>setMenuOpen(v=>!v)} className="flex h-10 max-w-[210px] items-center gap-2 rounded-lg border border-transparent px-2 text-left hover:border-[#DCE3EC] hover:bg-[#F5F8FD]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#174EA6]"><UserRound size={17}/></span><span className="hidden min-w-0 sm:block"><span className="block truncate text-sm font-medium text-[#172033]">{profile.nombre}</span></span><ChevronDown size={16} className="shrink-0 text-[#607089]"/></button>{menuOpen&&<div role="menu" className="absolute right-0 top-12 w-64 rounded-xl border border-[#DCE3EC] bg-white p-2 shadow-[0_12px_32px_rgba(11,31,58,.12)]"><div className="border-b border-[#DCE3EC] px-3 py-2.5"><p className="truncate text-xs text-[#607089]">{profile.email}</p><p className="mt-1 text-xs capitalize text-[#607089]">{profile.role}</p></div><button role="menuitem" className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[#C53030] hover:bg-red-50" onClick={()=>{setMenuOpen(false);setConfirming(true)}}><LogOut size={17}/>Cerrar sesión</button></div>}</div></div></header><main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">{children}</main><nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[#DCE3EC] bg-white sm:hidden" aria-label="Navegación móvil"><div className={`grid ${links.length===3?"grid-cols-3":"grid-cols-2"}`}>{links.map(({href,label,icon:Icon})=>{const active=pathname===href||pathname.startsWith(`${href}/`);return <Link key={href} href={href} className={`flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium ${active?"text-[#174EA6]":"text-[#607089]"}`}><Icon size={19}/><span className="truncate">{label}</span></Link>})}</div></nav><ConfirmDialog open={confirming} busy={loggingOut} onCancel={()=>setConfirming(false)} onConfirm={logout}/></div>;
 }

@@ -1,2 +1,2 @@
 import { LoaderCircle } from "lucide-react";
-export function LoadingState({label="Cargando...",compact=false}:{label?:string;compact?:boolean}){return <div role="status" aria-live="polite" className={`flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 ${compact?"py-2":"card min-h-32 p-6"}`}><LoaderCircle className="animate-spin text-blue-600" size={20}/><span>{label}</span></div>}
+export function LoadingState({label="Cargando...",compact=false}:{label?:string;compact?:boolean}){return <div role="status" aria-live="polite" className={`flex items-center justify-center gap-2 text-sm font-medium text-[#607089] ${compact?"py-2":"card min-h-24 p-4"}`}><LoaderCircle className="animate-spin text-[#2563EB]" size={18}/><span>{label}</span></div>}
