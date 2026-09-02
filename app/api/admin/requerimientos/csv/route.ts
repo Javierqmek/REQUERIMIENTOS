@@ -1,28 +1,23 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { parseAdminQuery } from "@/lib/admin/filters";
+import { exportRequirements } from "@/lib/admin/data";
+import { CSV_HEADERS, toCsvRows, csvCell } from "@/lib/admin/csv";
 
-function cell(value: unknown) { return `"${String(value ?? "").replaceAll('"', '""')}"`; }
-
-export async function GET() {
-  const profile = await getCurrentProfile();
-  if (profile?.role !== "admin") return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-  const supabase = await createClient();
-  const pageSize = 500;
-  let from = 0;
-  const output: unknown[][] = [["Fecha","Supervisor","Agente","DNI","Cliente","Unidad","Estado","Prenda","Cantidad","Código almacén","Precio unitario"]];
-  while (true) {
-    const { data, error } = await supabase.from("requerimientos")
-      .select("fecha,estado,personal(nombre,dni,cliente,unidad),profiles(nombre,email),detalle_requerimiento(cantidad,precio_unitario,codigo_almacen,prendas(nombre_prenda))")
-      .order("fecha", { ascending: false }).range(from, from + pageSize - 1);
-    if (error) return NextResponse.json({ error: "No se pudo exportar" }, { status: 500 });
-    for (const raw of data ?? []) {
-      const row = raw as unknown as {fecha:string;estado:string;personal:{nombre:string;dni:string;cliente:string;unidad:string}|null;profiles:{nombre:string;email:string}|null;detalle_requerimiento:{cantidad:number;precio_unitario:number;codigo_almacen:string;prendas:{nombre_prenda:string}|null}[]};
-      for (const detail of row.detalle_requerimiento) output.push([row.fecha,row.profiles?.nombre||row.profiles?.email,row.personal?.nombre,row.personal?.dni,row.personal?.cliente,row.personal?.unidad,row.estado,detail.prendas?.nombre_prenda,detail.cantidad,detail.codigo_almacen,detail.precio_unitario]);
+export async function GET(request: Request) {
+  if ((await getCurrentProfile())?.role !== "admin") return Response.json({ error: "No autorizado" }, { status: 403 });
+  try {
+    const { filters } = parseAdminQuery(new URL(request.url).searchParams);
+    const db = await createClient();
+    const output: unknown[][] = [CSV_HEADERS];
+    for await (const row of exportRequirements(db, filters, request.signal)) {
+      output.push(...toCsvRows(row));
     }
-    if ((data?.length ?? 0) < pageSize) break;
-    from += pageSize;
+    if (output.length === 1) return Response.json({ error: "No hay requerimientos para exportar con los filtros seleccionados." }, { status: 404 });
+    const csv = "\ufeff" + output.map(row => row.map(csvCell).join(";")).join("\r\n");
+    return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="requerimientos-${new Date().toISOString().slice(0,10)}.csv"`, "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return Response.json({ error: error instanceof z.ZodError ? "Revisa los filtros seleccionados." : "No se pudo exportar el CSV." }, { status: error instanceof z.ZodError ? 400 : 500, headers: { "Cache-Control": "private, no-store" } });
   }
-  const csv = "\ufeff" + output.map(row => row.map(cell).join(";")).join("\r\n");
-  return new NextResponse(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="requerimientos-${new Date().toISOString().slice(0,10)}.csv"`, "Cache-Control": "private, no-store" } });
 }

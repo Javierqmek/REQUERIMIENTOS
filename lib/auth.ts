@@ -12,5 +12,5 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     .select("id,email,nombre,role")
     .eq("id", user.id)
     .single();
-  return data as Profile | null;
+  return data && (data.role === "admin" || data.role === "coordinador") ? data as Profile : null;
 });

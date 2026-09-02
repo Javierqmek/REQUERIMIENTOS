@@ -1,22 +1,27 @@
-export type Role = "supervisor" | "admin";
+export type Role = "coordinador" | "admin";
 export type Estado = "Pendiente" | "Atendido" | "Observado";
 
 export interface Profile { id: string; email: string; nombre: string; role: Role }
 export interface Personal {
   id: string; codigo_personal: string; nombre: string; dni: string; cargo: string;
-  cliente: string; unidad: string; activo: boolean;
+  activo: boolean;
 }
+export interface Cliente { id: string; nombre: string; activo: boolean }
+export interface Unidad { id: string; cliente_id: string; nombre: string; activo: boolean }
 export interface Prenda {
   id: string; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string;
-  precio: number; cliente: string; activo: boolean;
+  precio: number; cliente: string; cantidad: number; activo: boolean;
 }
 export interface Detalle {
-  id: string; cantidad: number; precio_unitario: number; codigo_almacen: string;
+  id: string; cantidad: number; precio_unitario: number; codigo_almacen: string; activo: boolean;
   prendas: { nombre_prenda: string } | null;
 }
 export interface Requerimiento {
-  id: string; fecha: string; referencia_interna: string; estado: Estado;
-  personal: Pick<Personal, "nombre" | "dni" | "cargo" | "cliente" | "unidad"> | null;
+  id: string; fecha: string; referencia_interna: string; estado: Estado; usuario_creador_id: string;
+  cliente_id: string | null; unidad_id: string | null;
+  clientes: Pick<Cliente, "nombre"> | null;
+  unidades: Pick<Unidad, "nombre"> | null;
+  personal: Pick<Personal, "nombre" | "dni" | "cargo"> | null;
   profiles?: Pick<Profile, "nombre" | "email"> | null;
   detalle_requerimiento?: Detalle[];
 }

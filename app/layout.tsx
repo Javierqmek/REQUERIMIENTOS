@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+// Nonce por petición: no servir HTML estático con un nonce reutilizado.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Requerimientos de Uniformes",

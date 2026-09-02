@@ -1,0 +1,62 @@
+import { test, expect } from "@playwright/test";
+import { editGarments, fixtureEdit } from "../fixtures/edit";
+const path = `/requerimientos/${fixtureEdit().requerimiento.id}/editar`;
+for (const [width,height] of [[1440,900],[1366,768],[390,844],[375,812],[320,700]]) test(`Edición responsive ${width}x${height}`, async ({ page }) => {
+  await page.setViewportSize({ width,height }); await page.goto(path);
+  await expect(page.getByRole("heading", { name: "Datos del requerimiento" })).toBeVisible();
+  await expect(page.getByText("Solo lectura", { exact: true })).toBeVisible();
+  await expect(page.locator("input")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Administración", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Prenda", { exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `.qa/edit-${width}x${height}.png`, fullPage: true });
+  await page.getByRole("button", { name: "Guardar cambios", exact: true }).scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+test("retirar/reagregar usa maestro y guarda solo IDs una vez", async ({ page }) => {
+  await page.goto(path);
+  await page.getByRole("button", { name: `Retirar ${editGarments[0].nombre_prenda}` }).click();
+  await expect(page.getByRole("button", { name: "Guardar cambios", exact: true })).toBeDisabled();
+  await expect(page.getByText("Agrega al menos una prenda para guardar los cambios.")).toBeVisible();
+  await page.getByLabel("Prenda", { exact: true }).selectOption(editGarments[0].id);
+  await expect(page.getByRole("status", { name: "Cantidad fija" })).toHaveText("5");
+  await page.getByRole("button", { name: "Agregar", exact: true }).click();
+  await expect(page.getByText("ACTUAL · Cantidad 5 · S/ 99.00", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Prenda", { exact: true }).locator(`option[value="${editGarments[0].id}"]`)).toBeDisabled();
+  let saves = 0; let submitted: unknown;
+  page.on("request", request => { if (request.method() === "PATCH") { saves++; submitted = request.postDataJSON(); } });
+  await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Guardando cambios...", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Cancelar", exact: true })).toBeDisabled();
+  await expect(page.getByText("Prendas actualizadas correctamente.", { exact: true })).toBeVisible();
+  expect(saves).toBe(1); expect(submitted).toEqual({ version: fixtureEdit().version, detalles: [{ prenda_id: editGarments[0].id }] });
+});
+test("agregar conserva identidad y snapshots de la línea existente", async ({ page }) => {
+  await page.goto(path + "?estado=Observado&role=admin");
+  await expect(page.getByText("HISTÓRICO · Cantidad 5 · S/ 20.00", { exact: true })).toBeVisible();
+  await page.getByLabel("Prenda", { exact: true }).selectOption(editGarments[1].id);
+  await page.getByRole("button", { name: "Agregar", exact: true }).click();
+  const request = page.waitForRequest(request => request.method() === "PATCH");
+  await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  expect((await request).postDataJSON().detalles).toEqual([{ prenda_id: editGarments[0].id, detalle_id: fixtureEdit().requerimiento.detalle_requerimiento[0].id },{ prenda_id: editGarments[1].id }]);
+});
+for (const role of ["coordinador","admin"]) test(`Atendido sin controles de edición ${role}`, async ({ page }) => {
+  await page.goto(path + `?estado=Atendido&role=${role}`);
+  await expect(page.getByText("Este requerimiento ya fue atendido y no puede modificarse.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Guardar cambios", exact: true })).toHaveCount(0);
+  await expect(page.locator("select")).toHaveCount(0);
+});
+test("conflicto conserva líneas y ofrece recarga; error de red permite reintentar", async ({ page }) => {
+  await page.setViewportSize({ width: 320,height: 700 });
+  await page.route("**/api/requerimientos/*/prendas", route => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "No pudimos guardar los cambios. Intenta nuevamente." }) }));
+  await page.goto(path); await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("No pudimos guardar");
+  await expect(page.getByRole("button", { name: "Guardar cambios", exact: true })).toBeEnabled();
+  await page.unroute("**/api/requerimientos/*/prendas");
+  await page.route("**/api/requerimientos/*/prendas", route => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "El requerimiento o el maestro cambió. Recarga la página antes de guardar." }) }));
+  await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Recargar datos", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Guardar cambios", exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: ".qa/edit-conflict-320.png", fullPage: true });
+});

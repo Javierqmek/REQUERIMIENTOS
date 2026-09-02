@@ -1,18 +1,132 @@
 "use client";
-import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, LoaderCircle, Search } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import type { Estado, Requerimiento } from "@/lib/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, Download, FileSpreadsheet, LoaderCircle, SlidersHorizontal } from "lucide-react";
+import { AdminFiltersForm } from "@/components/admin-filters";
+import { AdminResults } from "@/components/admin-results";
 import { Alert } from "@/components/ui/alert";
+import { Toast } from "@/components/ui/toast";
+import { adminFiltersSchema, EMPTY_FILTERS, filterParams, type AdminFilters } from "@/lib/admin/filters";
+import type { AdminOptions, AdminResult } from "@/lib/admin/types";
+import type { IncompleteRequirement } from "@/lib/admin/sidige";
+import type { Estado } from "@/lib/types";
 
-const states:Estado[]=["Pendiente","Atendido","Observado"];
-export function AdminRequirements({initial}:{initial:Requerimiento[]}){
-  const [rows,setRows]=useState(initial); const [query,setQuery]=useState(""); const [state,setState]=useState(""); const [busy,setBusy]=useState(""); const [loadingMore,setLoadingMore]=useState(false); const [hasMore,setHasMore]=useState(initial.length===50); const [exporting,setExporting]=useState(false); const [notice,setNotice]=useState<{kind:"success"|"error";text:string}|null>(null);
-  const filtered=useMemo(()=>rows.filter(r=>{const matches=!query||[r.profiles?.nombre,r.profiles?.email,r.personal?.nombre,r.personal?.dni,r.personal?.cliente,r.personal?.unidad].some(v=>v?.toLowerCase().includes(query.toLowerCase())); return matches&&(!state||r.estado===state);}),[rows,query,state]);
-  async function update(id:string,estado:Estado){if(busy)return;setBusy(id);setNotice(null);const {error}=await createClient().from("requerimientos").update({estado}).eq("id",id);if(!error){setRows(x=>x.map(r=>r.id===id?{...r,estado}:r));setNotice({kind:"success",text:"Estado actualizado correctamente."});}else setNotice({kind:"error",text:"No se pudo actualizar el estado."});setBusy("");}
-  function exportCsv(){if(exporting)return;setExporting(true);const link=document.createElement("a");link.href="/api/admin/requerimientos/csv";link.click();window.setTimeout(()=>setExporting(false),1800);}
-  async function loadMore(){if(loadingMore)return;setLoadingMore(true);setNotice(null);const {data,error}=await createClient().from("requerimientos").select("id,fecha,referencia_interna,estado,personal(nombre,dni,cargo,cliente,unidad),profiles(nombre,email)").order("fecha",{ascending:false}).range(rows.length,rows.length+49);if(error){setNotice({kind:"error",text:"No se pudieron cargar más registros."});setLoadingMore(false);return;}const next=(data??[]) as unknown as Requerimiento[];setRows(current=>[...current,...next]);setHasMore(next.length===50);setLoadingMore(false);}
-  return <>{notice&&<div className="mb-3"><Alert kind={notice.kind}>{notice.text}</Alert></div>}<div className="mb-4 grid gap-2 sm:grid-cols-[minmax(260px,1fr)_190px_auto]"><div className="relative"><Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#607089]" size={18}/><input className="input !pl-11" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por supervisor, agente, DNI..."/></div><select className="input" value={state} onChange={e=>setState(e.target.value)}><option value="">Todos los estados</option>{states.map(s=><option key={s}>{s}</option>)}</select><button disabled={exporting} className="btn btn-secondary" onClick={exportCsv}>{exporting?<LoaderCircle className="animate-spin" size={17}/>:<Download size={17}/>} {exporting?"Exportando...":"Exportar CSV"}</button></div>
-    <div className="card overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="border-b border-[#DCE3EC] bg-[#F8FAFD] text-xs font-medium text-[#607089]"><tr>{["Fecha","Supervisor","Agente","DNI","Cliente · Unidad","Estado",""] .map((h,i)=><th className="px-4 py-3" key={i}>{h}</th>)}</tr></thead><tbody className="divide-y divide-[#E8EDF4]">{filtered.map(r=><tr key={r.id} className="hover:bg-[#FBFCFE]"><td className="whitespace-nowrap px-4 py-3 text-xs text-[#607089]">{new Intl.DateTimeFormat("es-PE").format(new Date(r.fecha))}</td><td className="px-4 py-3 text-sm">{r.profiles?.nombre||r.profiles?.email}</td><td className="px-4 py-3 text-sm font-medium">{r.personal?.nombre}</td><td className="px-4 py-3 text-sm">{r.personal?.dni}</td><td className="px-4 py-3 text-sm">{r.personal?.cliente} · {r.personal?.unidad}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><select disabled={Boolean(busy)} className="h-9 rounded-lg border border-[#CBD5E1] bg-white px-2 text-sm" value={r.estado} onChange={e=>update(r.id,e.target.value as Estado)}>{states.map(s=><option key={s}>{s}</option>)}</select>{busy===r.id&&<LoaderCircle className="animate-spin text-[#2563EB]" size={16}/>}</div></td><td className="px-4 py-3"><Link className="text-sm font-medium text-[#174EA6]" href={`/requerimientos/${r.id}`}>Ver detalle</Link></td></tr>)}</tbody></table>{!filtered.length&&<p className="p-6 text-center text-sm text-[#607089]">No hay resultados para los filtros seleccionados.</p>}</div>{hasMore&&<button className="btn btn-secondary mx-auto mt-3 flex" disabled={loadingMore} onClick={loadMore}>{loadingMore&&<LoaderCircle className="animate-spin" size={17}/>} {loadingMore?"Cargando...":"Cargar más"}</button>}</>;
+type Notice = { kind: "success" | "error" | "info"; text: string; issues?: IncompleteRequirement[]; totalIncomplete?: number };
+const sessionMessage = "Tu sesión pudo haber caducado. Vuelve a iniciar sesión y reintenta.";
+async function readJson(response: Response) {
+  if (response.redirected || response.headers.get("Content-Type")?.includes("text/html")) throw new Error(sessionMessage);
+  if (!response.headers.get("Content-Type")?.includes("application/json")) throw new Error("El servidor no devolvió una respuesta válida. Intenta nuevamente.");
+  return response.json();
+}
+export function AdminRequirements({ initial, options, initialFilters = EMPTY_FILTERS }: {
+  initial: AdminResult; options: AdminOptions; initialFilters?: AdminFilters;
+}) {
+  const [result, setResult] = useState(initial);
+  const [draft, setDraft] = useState(initialFilters);
+  const [applied, setApplied] = useState(initialFilters);
+  const [filtersOpen, setFiltersOpen] = useState(() => Object.values(initialFilters).some(Boolean));
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [exporting, setExporting] = useState<"sidige" | "csv" | "">("");
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [toast, setToast] = useState("");
+  const requestRef = useRef<AbortController | null>(null);
+  const downloadRef = useRef<AbortController | null>(null);
+  const updateRef = useRef(false);
+  const exportingRef = useRef(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(applied);
+  const closeToast = useCallback(() => setToast(""), []);
+  useEffect(() => () => { requestRef.current?.abort(); downloadRef.current?.abort(); }, []);
+
+  async function load(filters: AdminFilters, page: number) {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    try {
+      const response = await fetch("/api/admin/requerimientos?" + filterParams(filters, page), { signal: controller.signal, cache: "no-store" });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || "No se pudo consultar la información.");
+      if (controller.signal.aborted) return;
+      const data = payload as AdminResult;
+      const lastPage = Math.max(1, Math.ceil(data.total / data.pageSize));
+      if (page > lastPage) { await load(filters, lastPage); return; }
+      setResult(data); setApplied(filters);
+      window.history.replaceState(null, "", "/admin/requerimientos?" + filterParams(filters, data.page));
+    } catch (error) {
+      if (!controller.signal.aborted) setNotice({ kind: "error", text: error instanceof Error ? error.message : "No se pudo consultar la información." });
+    } finally {
+      if (requestRef.current === controller) setLoading(false);
+    }
+  }
+  function apply() {
+    const parsed = adminFiltersSchema.safeParse(draft);
+    if (!parsed.success) { setNotice({ kind: "error", text: parsed.error.issues[0].message }); return; }
+    setDraft(parsed.data); setNotice(null); void load(parsed.data, 1);
+  }
+  function clear() { setDraft(EMPTY_FILTERS); setNotice(null); void load(EMPTY_FILTERS, 1); }
+  async function update(id: string, estado: Estado) {
+    if (updateRef.current || exportingRef.current || loading) return;
+    updateRef.current = true; setBusy(id); setNotice(null);
+    try {
+      const response = await fetch("/api/admin/requerimientos", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, estado }) });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || "No se pudo actualizar el estado.");
+      setNotice({ kind: "success", text: "Estado actualizado correctamente." });
+      // Recalcular contador y página: la fila puede dejar de cumplir el filtro de estado.
+      await load(applied, result.page);
+    } catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : "No se pudo actualizar el estado." }); }
+    finally { updateRef.current = false; setBusy(""); }
+  }
+  async function download(kind: "sidige" | "csv") {
+    if (exportingRef.current || updateRef.current || loading || dirty) return;
+    if (!result.total) { setNotice({ kind: "info", text: "No hay requerimientos para exportar con los filtros seleccionados." }); return; }
+    exportingRef.current = true; setExporting(kind); setNotice(null);
+    const controller = new AbortController();
+    downloadRef.current = controller;
+    try {
+      const response = await fetch(`/api/admin/requerimientos/${kind}?` + filterParams(applied), { signal: controller.signal, cache: "no-store" });
+      if (!response.ok) {
+        const payload = await readJson(response);
+        setNotice({ kind: "error", text: payload.error || "No se pudo generar el archivo.", issues: payload.issues, totalIncomplete: payload.totalIncomplete });
+        return;
+      }
+      const contentType = response.headers.get("Content-Type") ?? "";
+      if (response.redirected || contentType.includes("text/html")) throw new Error(sessionMessage);
+      if (!contentType.includes(kind === "sidige" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv")) throw new Error("No recibimos un archivo válido. Intenta nuevamente.");
+      const blob = await response.blob();
+      const filename = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? (kind === "sidige" ? "MIGRADOR_RENOVACION_VERANO.xlsx" : "requerimientos.csv");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url; link.download = filename;
+      document.body.append(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setNotice({ kind: "success", text: "Archivo listo: " + filename });
+      setToast(kind === "sidige" ? "Excel generado correctamente" : "CSV generado correctamente");
+    } catch (error) {
+      if (!controller.signal.aborted) setNotice({ kind: "error", text: error instanceof Error ? error.message : "No se pudo descargar el archivo. Intenta nuevamente." });
+    } finally { exportingRef.current = false; setExporting(""); }
+  }
+  const disabled = Boolean(exporting || busy);
+  const activeCount = Object.values(applied).filter(Boolean).length;
+  return <section className="min-w-0">
+    <header className="page-header flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div><h1 className="page-title">Administración</h1><p className="page-description">Consulta requerimientos, actualiza estados y prepara la importación SIDIGE.</p></div>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row lg:shrink-0">
+        <button className="btn btn-secondary" disabled={disabled || loading || dirty} onClick={() => download("csv")}>{exporting === "csv" ? <LoaderCircle className="animate-spin" size={17}/> : <Download size={17}/>}Exportar CSV</button>
+        <button className="btn btn-primary sm:min-w-[219px]" disabled={disabled || loading || dirty} onClick={() => download("sidige")}>{exporting === "sidige" ? <LoaderCircle className="animate-spin" size={17}/> : <FileSpreadsheet size={17}/>} {exporting === "sidige" ? "Generando Excel..." : "Exportar Excel SIDIGE"}</button>
+      </div>
+    </header>
+    <div className="card">
+      <button onClick={() => setFiltersOpen(value => !value)} className="flex min-h-12 w-full items-center gap-2 rounded-xl px-4 text-left text-sm font-medium sm:px-5" aria-expanded={filtersOpen} aria-controls="admin-filter-panel"><SlidersHorizontal size={17} className="text-[var(--text-secondary)]"/>Filtros<span className="text-xs font-normal text-[var(--text-secondary)]">{activeCount ? `· ${activeCount} aplicados` : "· Todos los requerimientos"}</span><ChevronDown size={16} className={`ml-auto shrink-0 ${filtersOpen ? "rotate-180" : ""}`}/></button>
+      <div id="admin-filter-panel" hidden={!filtersOpen}><AdminFiltersForm value={draft} options={options} disabled={disabled || loading} dirty={dirty} onChange={setDraft} onApply={apply} onClear={clear}/></div>
+    </div>
+    {notice && <div className="mt-4 break-words"><Alert kind={notice.kind}>
+      <p>{notice.text}</p>
+      {notice.issues && <ul className="mt-2 list-disc space-y-2 pl-4">{notice.issues.map(issue => <li key={issue.id}><Link className="underline underline-offset-2" href={`/requerimientos/${issue.id}`}>{issue.agente} · {issue.id}</Link><p className="font-normal">{issue.campos.join(", ")}</p></li>)}</ul>}
+      {notice.totalIncomplete && notice.totalIncomplete > (notice.issues?.length ?? 0) ? <p className="mt-2 font-normal">Se muestran los primeros {notice.issues?.length} de {notice.totalIncomplete} requerimientos incompletos. Reduce los filtros para revisarlos.</p> : null}
+      {notice.kind === "error" && !notice.issues && <button onClick={() => { setNotice(null); void load(applied, result.page); }} disabled={loading || disabled} className="mt-2 underline underline-offset-2">Volver a consultar</button>}
+    </Alert></div>}
+    <AdminResults result={result} loading={loading} busy={busy} disabled={disabled} onUpdate={update} onPage={page => { setNotice(null); void load(applied, page); }}/>
+    <Toast message={toast} onClose={closeToast}/>
+  </section>;
 }

@@ -7,9 +7,10 @@ export const loginSchema = z.object({
 
 export const requerimientoSchema = z.object({
   agente_id: z.string().uuid(),
+  cliente_id: z.string().uuid("Selecciona un cliente"),
+  unidad_id: z.string().uuid("Selecciona una unidad"),
   detalles: z.array(z.object({
     prenda_id: z.string().uuid(),
-    cantidad: z.number().int().positive("La cantidad debe ser mayor a cero"),
   })).min(1, "Agrega al menos una prenda").superRefine((rows, ctx) => {
     const ids = new Set<string>();
     rows.forEach((row, index) => {

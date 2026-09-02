@@ -29,5 +29,9 @@ button,a,input,select { transition:color .16s,background-color .16s,border-color
 .page-description { margin-top:6px; max-width:650px; color:var(--text-secondary); font-size:14px; }
 .section-title { color:var(--brand-900); font-size:18px; font-weight:600; }
 .metadata { color:var(--text-secondary); font-size:12px; font-weight:500; }
+.admin-table th { background:var(--brand-50); color:var(--text-secondary); font-size:12px; font-weight:500; }
+.admin-table th,.admin-table td { padding:12px 10px; border-bottom:1px solid var(--border); overflow-wrap:anywhere; vertical-align:middle; }
+.admin-table tr:last-child td { border-bottom:0; }
+.admin-table tbody tr:hover { background:var(--brand-50); }
 @media (max-width:640px) { .section-card{padding:16px}.page-header{margin-bottom:16px}.page-title{font-size:24px}.btn{min-height:46px} }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; animation-iteration-count:1!important; } }
