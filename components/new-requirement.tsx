@@ -5,8 +5,13 @@ import { ArrowLeft, CheckCircle2, ClipboardList, FilePlus2, Home, LoaderCircle, 
 import { createClient } from "@/lib/supabase/client";
 import { requerimientoSchema } from "@/lib/validations";
 import { Alert } from "@/components/ui/alert";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { GarmentGenderPicker } from "@/components/garment-gender-picker";
+import { RequirementTotal } from "@/components/requirement-total";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useActiveCatalog } from "@/components/use-active-catalog";
+import { genderLabel, isGenderCompatible, type GenderChoice } from "@/lib/garments/gender";
+import { catalogTotal, formatMoney } from "@/lib/requirements/money";
 import type { Cliente, Personal, Prenda, Unidad } from "@/lib/types";
 
 export function NewRequirement() {
@@ -18,6 +23,8 @@ export function NewRequirement() {
   const [agent, setAgent] = useState<Personal | null>(null);
   const [clientId, setClientId] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [gender, setGender] = useState<GenderChoice | null>(null);
+  const [pendingGender, setPendingGender] = useState<GenderChoice | null>(null);
   const [lines, setLines] = useState<Prenda[]>([]);
   const [selected, setSelected] = useState("");
   const [searching, setSearching] = useState(false);
@@ -28,9 +35,12 @@ export function NewRequirement() {
   const client = clients.rows.find(c => c.id === clientId);
   const units = useActiveCatalog<Unidad>(supabase, "unidades", step === 2 && Boolean(client), { column: "cliente_id", value: clientId });
   const unit = units.rows.find(u => u.id === unitId);
-  const garments = useActiveCatalog<Prenda>(supabase, "prendas", step === 2 && Boolean(client && unit), { column: "cliente", value: client?.nombre ?? "" });
+  const genderValues = useMemo(() => gender ? [gender, "AMBOS"] : [], [gender]);
+  const garments = useActiveCatalog<Prenda>(supabase, "prendas", step === 2 && Boolean(client && unit && gender), { column: "cliente", value: client?.nombre ?? "" }, { column: "genero", values: genderValues });
+  const visibleGarments = garments.rows.filter(garment => gender && isGenderCompatible(garment.genero, gender));
   const chosen = garments.rows.find(g => g.id === selected);
-  const ready = Boolean(client && unit) && !garments.loading && !garments.error;
+  const ready = Boolean(client && unit && gender) && !garments.loading && !garments.error;
+  const total = catalogTotal(lines);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,7 +63,7 @@ export function NewRequirement() {
   }, [query, supabase]);
 
   function clearDestination() {
-    setClientId(""); setUnitId(""); setLines([]); setSelected(""); setError("");
+    setClientId(""); setUnitId(""); setGender(null); setPendingGender(null); setLines([]); setSelected(""); setError("");
   }
   function reset() {
     if (savingRef.current) return;
@@ -63,7 +73,19 @@ export function NewRequirement() {
     clearDestination(); setAgent(a); setStep(2);
   }
   function changeClient(id: string) {
-    setClientId(id); setUnitId(""); setLines([]); setSelected(""); setError("");
+    setClientId(id); setUnitId(""); setGender(null); setPendingGender(null); setLines([]); setSelected(""); setError("");
+  }
+  function applyGender(next: GenderChoice) {
+    setGender(next);
+    setLines(current => current.filter(garment => isGenderCompatible(garment.genero, next)));
+    setSelected("");
+    setPendingGender(null);
+    setError("");
+  }
+  function changeGender(next: GenderChoice) {
+    if (next === gender) return;
+    if (lines.some(garment => !isGenderCompatible(garment.genero, next))) setPendingGender(next);
+    else applyGender(next);
   }
   function add() {
     if (!ready || !chosen || savingRef.current) return;
@@ -162,32 +184,39 @@ export function NewRequirement() {
             {client && !units.loading && !units.error && !units.rows.length && <p className="mt-2 text-sm text-[#607089]">No hay unidades activas para este cliente.</p>}
           </div>
         </div>
+        {unit && <GarmentGenderPicker value={gender} disabled={saving} onChange={changeGender}/>}
       </div>
       <div className="section-card mt-4">
         <h2 className="section-title">Prendas solicitadas</h2>
         <p className="mt-1 text-sm text-[#607089]">La cantidad de cada prenda está definida en el maestro de prendas.</p>
-        {!client ? <p className="mt-3 text-sm text-[#607089]">Selecciona un cliente</p> : !unit ? <p className="mt-3 text-sm text-[#607089]">Selecciona una unidad</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button className="btn btn-ghost" onClick={garments.retry}>Reintentar</button></div> : !garments.rows.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente</p>}
+        {!client ? <p className="mt-3 text-sm text-[#607089]">Selecciona un cliente</p> : !unit ? <p className="mt-3 text-sm text-[#607089]">Selecciona una unidad</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para ver las prendas disponibles.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button className="btn btn-ghost" onClick={garments.retry}>Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente y género.</p>}
         <div className="mt-4 grid grid-cols-[88px_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_96px_auto]">
           <div className="col-span-2 min-w-0 sm:col-span-1">
             <label className="mb-1 block text-xs font-medium text-[#607089]" htmlFor="prenda">Prenda</label>
             <select id="prenda" className="input" disabled={saving || !ready || !garments.rows.length} value={selected} onChange={e => setSelected(e.target.value)}>
               <option value="">Selecciona una prenda</option>
-              {garments.rows.map(g => <option key={g.id} value={g.id} disabled={lines.some(p => p.id === g.id)}>{g.nombre_prenda}</option>)}
+              {visibleGarments.map(g => <option key={g.id} value={g.id} disabled={lines.some(p => p.id === g.id)}>{g.nombre_prenda} · Cant. {g.cantidad}</option>)}
             </select>
           </div>
           <div><span id="cantidad-label" className="mb-1 block text-xs font-medium text-[#607089]">Cantidad fija</span><output aria-labelledby="cantidad-label" className="flex min-h-11 items-center rounded-lg border border-[#DCE3EC] bg-[#F8FAFD] px-3 text-sm">{chosen?.cantidad ?? "—"}</output></div>
           <button disabled={saving || !ready || !chosen} onClick={add} className="btn btn-primary"><Plus size={17}/>Agregar</button>
         </div>
-        {chosen && <p className="mt-2 break-words text-xs text-[#607089]">Código {chosen.codigo_almacen} · Precio unitario S/ {Number(chosen.precio).toFixed(2)}</p>}
+        {chosen && <p className="mt-2 break-words text-xs text-[#607089]">Código {chosen.codigo_almacen} · {genderLabel(chosen.genero)} · Precio unitario S/ {Number(chosen.precio).toFixed(2)}</p>}
         <div className="mt-4 divide-y divide-[#E8EDF4] border-y border-[#E8EDF4]">
-          {!lines.length ? <p className="py-4 text-center text-sm text-[#607089]">Todavía no agregaste prendas.</p> : lines.map(p => <div key={p.id} className="flex items-center gap-3 py-3"><div className="min-w-0 flex-1"><strong className="break-words text-sm font-medium text-[#172033]">{p.nombre_prenda}</strong><p className="mt-0.5 break-words text-xs text-[#607089]">{p.codigo_almacen} · Cantidad {p.cantidad} · S/ {Number(p.precio).toFixed(2)}</p></div><button disabled={saving} aria-label={`Eliminar ${p.nombre_prenda}`} onClick={() => setLines(x => x.filter(i => i.id !== p.id))} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#C53030] hover:bg-red-50"><Trash2 size={17}/></button></div>)}
+          {!lines.length ? <p className="py-4 text-center text-sm text-[#607089]">Todavía no agregaste prendas.</p> : lines.map(p => <div key={p.id} className="flex items-center gap-3 py-3"><div className="min-w-0 flex-1"><strong className="break-words text-sm font-medium text-[#172033]">{p.nombre_prenda}</strong><p className="mt-0.5 break-words text-xs text-[#607089]">{p.codigo_almacen} · {genderLabel(p.genero)} · Cantidad {p.cantidad}</p><p className="mt-0.5 text-xs text-[#607089]">Precio unitario {formatMoney(p.precio)} · Subtotal <span className="font-medium text-[#45556D]">{formatMoney(Number(p.precio) * p.cantidad)}</span></p></div><button disabled={saving} aria-label={`Eliminar ${p.nombre_prenda}`} onClick={() => setLines(x => x.filter(i => i.id !== p.id))} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#C53030] hover:bg-red-50"><Trash2 size={17}/></button></div>)}
         </div>
+        <RequirementTotal count={lines.length} total={total}/>
       </div>
       {error && <div className="mt-3"><Alert kind="error">{error}</Alert></div>}
       <footer className="mt-4 flex flex-col-reverse gap-2 border-t border-[#DCE3EC] pt-4 sm:flex-row sm:justify-end">
         <button disabled={saving} onClick={reset} className="btn btn-secondary">Cancelar</button>
         <button onClick={save} disabled={saving || !ready || !lines.length} className="btn btn-primary w-full sm:w-auto">{saving ? <LoaderCircle className="animate-spin" size={17}/> : <CheckCircle2 size={17}/>} {saving ? "Guardando requerimiento..." : "Guardar requerimiento"}</button>
       </footer>
+      <ConfirmDialog open={Boolean(pendingGender)} busy={false} intent="warning"
+        title="¿Cambiar el género de las prendas?"
+        description="Al cambiar el género se quitarán las prendas que ya no correspondan. Las prendas unisex se mantendrán."
+        confirmLabel="Sí, continuar" onCancel={() => setPendingGender(null)}
+        onConfirm={() => pendingGender && applyGender(pendingGender)}/>
     </section>
   );
 }

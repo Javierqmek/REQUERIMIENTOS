@@ -8,6 +8,10 @@ for (const [width, height] of sizes) {
     await page.getByRole("button", { name: "Filtros · Todos los requerimientos" }).click();
     await expect(page.getByRole("heading", { name: "Administración", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "62 requerimientos encontrados" })).toBeVisible();
+    const total = width >= 1280
+      ? page.locator("table td").filter({ hasText: /^S\/ 40\.00$/ }).first()
+      : page.locator("article dd").filter({ hasText: /^S\/ 40\.00$/ }).first();
+    await expect(total).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `.qa/admin-${width}x${height}-filters.png`, fullPage: false });
     await page.getByRole("button", { name: "Filtros · Todos los requerimientos" }).click();

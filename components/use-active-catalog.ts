@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 const columns = {
   clientes: "id,nombre,activo",
   unidades: "id,cliente_id,nombre,activo",
-  prendas: "id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,activo",
+  prendas: "id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,genero,activo",
 };
 
 // Read every page of the requested active catalog, never unrelated agents or garments.
@@ -15,10 +15,14 @@ export function useActiveCatalog<T>(
   table: keyof typeof columns,
   enabled: boolean,
   filter?: { column: "cliente_id" | "cliente"; value: string },
+  valuesFilter?: { column: "genero"; values: string[] },
 ) {
   const column = filter?.column;
   const value = filter?.value;
-  const key = JSON.stringify([table, enabled, column, value]);
+  const valuesColumn = valuesFilter?.column;
+  const values = valuesFilter?.values;
+  const valuesKey = values?.join(",") ?? "";
+  const key = JSON.stringify([table, enabled, column, value, valuesColumn, valuesKey]);
   const [result, setResult] = useState<{ key: string; rows: T[]; loading: boolean; error: boolean }>({ key: "", rows: [], loading: false, error: false });
   const [attempt, setAttempt] = useState(0);
 
@@ -35,6 +39,7 @@ export function useActiveCatalog<T>(
         for (let offset = 0; ; offset += size) {
           let request = supabase.from(table).select(columns[table]).eq("activo", true);
           if (column && value) request = request.eq(column, value);
+          if (valuesColumn && values?.length) request = request.in(valuesColumn, values);
           const { data, error } = await request
             .order(table === "prendas" ? "nombre_prenda" : "nombre")
             .order("id").range(offset, offset + size - 1).abortSignal(controller.signal);
@@ -50,7 +55,7 @@ export function useActiveCatalog<T>(
     }
     void load();
     return () => controller.abort();
-  }, [supabase, table, enabled, column, value, key, attempt]);
+  }, [supabase, table, enabled, column, value, valuesColumn, values, valuesKey, key, attempt]);
 
   const current = enabled && result.key === key;
   return {

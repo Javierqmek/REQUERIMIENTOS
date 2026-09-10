@@ -4,8 +4,9 @@ import { fixtureRequirement, IDS } from "./admin";
 
 export const editProfile: Profile = { id: IDS.coordinador, nombre: "Javier Quispe", email: "qa@example.test", role: "coordinador" };
 export const editGarments: Prenda[] = [
-  { id: "33000000-0000-4000-8000-000000000001", codigo_prenda: "00001", nombre_prenda: "CAMISA OPERATIVA MANGA LARGA", codigo_almacen: "ACTUAL", precio: 99, cantidad: 5, cliente: "RENIEC", activo: true },
-  { id: "33000000-0000-4000-8000-000000000002", codigo_prenda: "00002", nombre_prenda: "PANTALÓN DE TRABAJO", codigo_almacen: "ALM-02", precio: 100, cantidad: 6, cliente: "RENIEC", activo: true },
+  { id: "33000000-0000-4000-8000-000000000001", codigo_prenda: "00001", nombre_prenda: "CAMISA OPERATIVA MANGA LARGA", genero: "HOMBRE", codigo_almacen: "ACTUAL", precio: 99, cantidad: 5, cliente: "RENIEC", activo: true },
+  { id: "33000000-0000-4000-8000-000000000002", codigo_prenda: "00002", nombre_prenda: "PANTALÓN DE TRABAJO", genero: "AMBOS", codigo_almacen: "ALM-02", precio: 100, cantidad: 6, cliente: "RENIEC", activo: true },
+  { id: "33000000-0000-4000-8000-000000000003", codigo_prenda: "00003", nombre_prenda: "BLUSA OPERATIVA", genero: "MUJER", codigo_almacen: "ALM-03", precio: 101, cantidad: 4, cliente: "RENIEC", activo: true },
 ];
 export function fixtureEdit(): EditPayload {
   const row = fixtureRequirement();

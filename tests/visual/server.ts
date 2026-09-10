@@ -53,7 +53,12 @@ async function main() {
       builder.onLoad({ filter: /.*/, namespace: "test-adapter" }, args => ({
         contents: args.path === "next/link" ? 'import React from "react"; export default function Link(p){return React.createElement("a",p)}' :
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
-          'const rows=' + JSON.stringify(editGarments) + '; export const createClient=()=>({auth:{signOut:async()=>({})},from(){const chain={select(){return chain},eq(){return chain},order(){return chain},range(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,200));return {data:rows,error:null}}};return chain}});', loader: "js", resolveDir: process.cwd(),
+          `const catalogs=${JSON.stringify({
+            clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true }],
+            unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", activo: true }],
+            prendas: editGarments,
+          })}; const agents=[{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA AGENTE OPERATIVA",dni:"12345678",cargo:"AGENTE",activo:true}];
+          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name){const result=name==="buscar_personal"?{data:agents,error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(catalogs[table]||[])];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
       }));
     } }],
   });

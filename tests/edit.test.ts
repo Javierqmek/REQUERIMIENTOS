@@ -10,6 +10,8 @@ import { toSidigeRows } from "../lib/admin/sidige";
 import { buildSidigeWorkbook } from "../lib/admin/workbook";
 import { fixtureRequirement } from "./fixtures/admin";
 import ExcelJS from "exceljs";
+import { genderLabel, inferGender, isGenderCompatible } from "../lib/garments/gender";
+import { catalogTotal, formatMoney, historicalTotal } from "../lib/requirements/money";
 
 for (const role of ["coordinador", "admin"] as const) for (const estado of ["Pendiente", "Observado", "Atendido"] as const) {
   test(`${role} - ${estado}: permiso visual`, () => {
@@ -26,9 +28,26 @@ test("líneas activas: conserva snapshots y usa cantidad fija", () => {
   const row = fixtureEdit().requerimiento;
   row.detalle_requerimiento.push({ ...row.detalle_requerimiento[0], id: "inactiva", activo: false });
   const lines = initialEditLines(row);
-  assert.equal(lines.length, 1); assert.equal(lines[0].precio, 20); assert.equal(lines[0].codigo, "HISTÓRICO"); assert.equal(lines[0].cantidad, 5);
+  assert.equal(lines.length, 1); assert.equal(lines[0].precio, 20); assert.equal(lines[0].codigo, "HISTÓRICO"); assert.equal(lines[0].cantidad, 5); assert.equal(lines[0].genero, "HOMBRE");
   const fresh = newEditLine(editGarments[0]);
   assert.equal(fresh.detalle_id, undefined); assert.equal(fresh.precio, 99); assert.equal(fresh.codigo, "ACTUAL"); assert.equal(fresh.cantidad, 5);
+});
+test("género filtra específicas, conserva AMBOS e infiere cuando es posible", () => {
+  assert.deepEqual(editGarments.filter(p => isGenderCompatible(p.genero, "HOMBRE")).map(p => p.genero), ["HOMBRE","AMBOS"]);
+  assert.deepEqual(editGarments.filter(p => isGenderCompatible(p.genero, "MUJER")).map(p => p.genero), ["AMBOS","MUJER"]);
+  assert.equal(inferGender(["AMBOS","HOMBRE"]), "HOMBRE");
+  assert.equal(inferGender(["AMBOS"]), null);
+  assert.equal(inferGender(["HOMBRE","MUJER"]), null);
+  assert.equal(genderLabel("AMBOS"), "Unisex");
+});
+test("totales usan catálogo nuevo y snapshots históricos activos", () => {
+  assert.equal(catalogTotal([{ cantidad: 2, precio: 28 },{ cantidad: 1, precio: 45 }]), 101);
+  assert.equal(historicalTotal([
+    { cantidad: 2, precio_unitario: "28.00", activo: true },
+    { cantidad: 1, precio_unitario: 45, activo: true },
+    { cantidad: 99, precio_unitario: 100, activo: false },
+  ]), 101);
+  assert.equal(formatMoney(101), "S/ 101.00");
 });
 const body = () => ({ version: fixtureEdit().version, detalles: [{ prenda_id: editGarments[0].id }] });
 test("CSV y XLSX real excluyen líneas inactivas incluso si la fuente las incluye", async () => {

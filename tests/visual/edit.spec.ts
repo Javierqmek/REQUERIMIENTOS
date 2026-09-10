@@ -7,7 +7,9 @@ for (const [width,height] of [[1440,900],[1366,768],[390,844],[375,812],[320,700
   await expect(page.getByText("Solo lectura", { exact: true })).toBeVisible();
   await expect(page.locator("input")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Administración", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Hombre" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByLabel("Prenda", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Resumen del requerimiento").getByText("S/ 100.00", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `.qa/edit-${width}x${height}.png`, fullPage: true });
   await page.getByRole("button", { name: "Guardar cambios", exact: true }).scrollIntoViewIfNeeded();
@@ -21,7 +23,9 @@ test("retirar/reagregar usa maestro y guarda solo IDs una vez", async ({ page })
   await page.getByLabel("Prenda", { exact: true }).selectOption(editGarments[0].id);
   await expect(page.getByRole("status", { name: "Cantidad fija" })).toHaveText("5");
   await page.getByRole("button", { name: "Agregar", exact: true }).click();
-  await expect(page.getByText("ACTUAL · Cantidad 5 · S/ 99.00", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Resumen del requerimiento").getByText("S/ 495.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("ACTUAL · Hombre · Cantidad 5", { exact: true })).toBeVisible();
+  await expect(page.getByText("Precio unitario S/ 99.00 · Subtotal S/ 495.00", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Prenda", { exact: true }).locator(`option[value="${editGarments[0].id}"]`)).toBeDisabled();
   let saves = 0; let submitted: unknown;
   page.on("request", request => { if (request.method() === "PATCH") { saves++; submitted = request.postDataJSON(); } });
@@ -33,12 +37,31 @@ test("retirar/reagregar usa maestro y guarda solo IDs una vez", async ({ page })
 });
 test("agregar conserva identidad y snapshots de la línea existente", async ({ page }) => {
   await page.goto(path + "?estado=Observado&role=admin");
-  await expect(page.getByText("HISTÓRICO · Cantidad 5 · S/ 20.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("HISTÓRICO · Hombre · Cantidad 5", { exact: true })).toBeVisible();
+  await expect(page.getByText("Precio unitario S/ 20.00 · Subtotal S/ 100.00", { exact: true })).toBeVisible();
   await page.getByLabel("Prenda", { exact: true }).selectOption(editGarments[1].id);
   await page.getByRole("button", { name: "Agregar", exact: true }).click();
   const request = page.waitForRequest(request => request.method() === "PATCH");
   await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   expect((await request).postDataJSON().detalles).toEqual([{ prenda_id: editGarments[0].id, detalle_id: fixtureEdit().requerimiento.detalle_requerimiento[0].id },{ prenda_id: editGarments[1].id }]);
+});
+test("cambiar género confirma, retira solo incompatible y conserva Unisex", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(path);
+  await page.getByLabel("Prenda", { exact: true }).selectOption(editGarments[1].id);
+  await page.getByRole("button", { name: "Agregar", exact: true }).click();
+  await page.getByRole("radio", { name: "Mujer" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("se quitarán las prendas");
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await expect(page.getByRole("radio", { name: "Hombre" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Mujer" }).click();
+  await dialog.getByRole("button", { name: "Sí, continuar" }).click();
+  await expect(page.getByRole("radio", { name: "Mujer" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText(editGarments[0].nombre_prenda, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(editGarments[1].nombre_prenda, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Prenda", { exact: true }).locator(`option[value="${editGarments[2].id}"]`)).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 for (const role of ["coordinador","admin"]) test(`Atendido sin controles de edición ${role}`, async ({ page }) => {
   await page.goto(path + `?estado=Atendido&role=${role}`);

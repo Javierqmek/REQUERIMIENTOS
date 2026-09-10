@@ -1,6 +1,6 @@
 import type { Requerimiento } from "@/lib/types";
 
-export type AdminRow = Requerimiento & { usuario_creador_id: string; cantidad_prendas: number };
+export type AdminRow = Requerimiento & { usuario_creador_id: string; cantidad_prendas: number; total_requerimiento: number | string };
 export type AdminResult = { rows: AdminRow[]; total: number; page: number; pageSize: number };
 export type AdminOptions = {
   clientes: { id: string; nombre: string }[];

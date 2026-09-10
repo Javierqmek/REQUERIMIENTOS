@@ -18,7 +18,7 @@ npm install
 
 1. En Supabase pulsa **New project**, elige una organización, un nombre y una contraseña segura para la base de datos.
 2. Espera a que termine la creación.
-3. Abre **SQL Editor**, pulsa **New query**, copia y ejecuta en orden todos los archivos de `supabase/migrations/`: `202608170001_initial_schema.sql`, `202608170002_performance.sql`, `202609020001_clientes_unidades_cantidad.sql`, `202609020002_admin_sidige.sql`, `202609020003_rol_coordinador.sql`, `202609020004_detalle_baja_logica_edicion.sql`, `202609020005_seguridad_produccion.sql` y `202609020006_security_advisor_hardening.sql`. Esto crea tablas, relaciones, validaciones, guardado atómico, RLS, índices, consultas administrativas, edición de prendas con historial y privilegios mínimos. Antes de 006 revisa [los avisos del Security Advisor](docs/security-advisor.md): `private` no debe exponerse en Data API. En proyectos existentes aplica solo migraciones pendientes, primero en staging.
+3. Abre **SQL Editor**, pulsa **New query**, copia y ejecuta en orden todos los archivos de `supabase/migrations/`: `202608170001_initial_schema.sql`, `202608170002_performance.sql`, `202609020001_clientes_unidades_cantidad.sql`, `202609020002_admin_sidige.sql`, `202609020003_rol_coordinador.sql`, `202609020004_detalle_baja_logica_edicion.sql`, `202609020005_seguridad_produccion.sql`, `202609020006_security_advisor_hardening.sql`, `202609100001_prendas_genero.sql` y `202609100002_totales_requerimientos.sql`. Esto crea tablas, relaciones, validaciones, guardado atómico, RLS, índices, consultas administrativas, edición de prendas con historial, clasificación por género y totales históricos. Antes de 006 revisa [los avisos del Security Advisor](docs/security-advisor.md): `private` no debe exponerse en Data API. En proyectos existentes aplica solo migraciones pendientes, primero en staging.
 4. Crea otra consulta, copia `supabase/seed.sql` y pulsa **Run**. Solo en una base de demostración: carga dos clientes, dos unidades, tres agentes y cuatro prendas; no sobrescribe registros existentes.
 5. En **Authentication > Providers**, confirma que Email está activado. Para pruebas internas puedes desactivar **Confirm email**; en producción conviene mantenerlo activado.
 
@@ -69,9 +69,9 @@ npm run build
 
 Prepara archivos CSV con encabezados equivalentes a las columnas de cada tabla. En Supabase abre **Table Editor** y usa **Insert > Import data from CSV**. Orden: clientes → unidades → personal → prendas.
 
-Para `clientes`: `nombre,activo`. Para `unidades`: `cliente_id,nombre,activo` (usa los UUID generados en clientes). Para `personal`: `codigo_personal,nombre,dni,cargo,activo`. Para `prendas`: `codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,activo`.
+Para `clientes`: `nombre,activo`. Para `unidades`: `cliente_id,nombre,activo` (usa los UUID generados en clientes). Para `personal`: `codigo_personal,nombre,dni,cargo,activo`. Para `prendas`: `codigo_prenda,nombre_prenda,genero,codigo_almacen,precio,cantidad,cliente,activo`.
 
-No incluyas `id` ni `created_at`: Supabase los genera. Conserva DNI y códigos como texto; en Excel conviene asignar formato **Texto** antes de guardar el CSV. El valor de `prendas.cliente` debe coincidir exactamente con `clientes.nombre`. La cantidad debe ser un entero positivo; si se omite vale 1. El agente no tiene destino asignado: cliente y unidad se eligen en cada requerimiento.
+No incluyas `id` ni `created_at`: Supabase los genera. `genero` admite HOMBRE, MUJER y AMBOS; HOMBRE/MUJER y UNISEX se normalizan como AMBOS. Conserva DNI y códigos como texto; en Excel conviene asignar formato **Texto** antes de guardar el CSV. El valor de `prendas.cliente` debe coincidir exactamente con `clientes.nombre`. La cantidad debe ser un entero positivo; si se omite vale 1. El agente no tiene destino asignado: cliente y unidad se eligen en cada requerimiento.
 
 ## 8. Desplegar en Vercel
 
@@ -115,6 +115,10 @@ No incluyas `id` ni `created_at`: Supabase los genera. Conserva DNI y códigos c
 Ejecuta únicamente las migraciones pendientes en el orden del apartado 3 antes de desplegar este frontend. No vuelvas a ejecutar migraciones ya aplicadas ni el seed en producción. Consulta [la guía de catálogos](docs/clientes-unidades-cantidad.md) y [roles, edición y baja lógica](docs/roles-edicion-baja-logica.md) para compatibilidad, SQL de revisión y pruebas.
 
 ## Administración y Excel SIDIGE
+
+Consulta [clasificación e importación de prendas por género](docs/prendas-genero.md) antes de desplegar el nuevo selector. La migración debe aplicarse primero; no agrega género a SIDIGE ni al detalle histórico.
+
+Los totales visibles en creación, Mis requerimientos y Administración se documentan en [totales de requerimientos](docs/totales-requerimientos.md). En una instalación ya migrada aplica únicamente `202609100002_totales_requerimientos.sql`, después de la migración de género y antes de desplegar este frontend.
 
 Administración incorpora filtros combinables en servidor, contador global, paginación, sumatoria de prendas y exportación XLSX SIDIGE con una fila por prenda. CSV permanece disponible y respeta los mismos filtros. Ejecuta la migración pendiente `202609020002_admin_sidige.sql` antes de desplegar esta versión; añade solo funciones de lectura con control admin, sin cambiar tablas ni RLS.
 
