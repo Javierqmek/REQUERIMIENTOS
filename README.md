@@ -18,7 +18,7 @@ npm install
 
 1. En Supabase pulsa **New project**, elige una organización, un nombre y una contraseña segura para la base de datos.
 2. Espera a que termine la creación.
-3. Abre **SQL Editor**, pulsa **New query**, copia y ejecuta en orden todos los archivos de `supabase/migrations/`: `202608170001_initial_schema.sql`, `202608170002_performance.sql`, `202609020001_clientes_unidades_cantidad.sql`, `202609020002_admin_sidige.sql`, `202609020003_rol_coordinador.sql`, `202609020004_detalle_baja_logica_edicion.sql`, `202609020005_seguridad_produccion.sql`, `202609020006_security_advisor_hardening.sql`, `202609100001_prendas_genero.sql` y `202609100002_totales_requerimientos.sql`. Esto crea tablas, relaciones, validaciones, guardado atómico, RLS, índices, consultas administrativas, edición de prendas con historial, clasificación por género y totales históricos. Antes de 006 revisa [los avisos del Security Advisor](docs/security-advisor.md): `private` no debe exponerse en Data API. En proyectos existentes aplica solo migraciones pendientes, primero en staging.
+3. Abre **SQL Editor**, pulsa **New query**, copia y ejecuta en orden todos los archivos de `supabase/migrations/`: `202608170001_initial_schema.sql`, `202608170002_performance.sql`, `202609020001_clientes_unidades_cantidad.sql`, `202609020002_admin_sidige.sql`, `202609020003_rol_coordinador.sql`, `202609020004_detalle_baja_logica_edicion.sql`, `202609020005_seguridad_produccion.sql`, `202609020006_security_advisor_hardening.sql`, `202609100001_prendas_genero.sql`, `202609100002_totales_requerimientos.sql` y `202609100003_mantenimiento_importaciones_borrado_pruebas.sql`. Esto crea tablas, relaciones, validaciones, guardado atómico, RLS, índices y funciones administrativas seguras. Antes de 006 revisa [los avisos del Security Advisor](docs/security-advisor.md): `private` no debe exponerse en Data API. En proyectos existentes aplica solo migraciones pendientes, primero en staging.
 4. Crea otra consulta, copia `supabase/seed.sql` y pulsa **Run**. Solo en una base de demostración: carga dos clientes, dos unidades, tres agentes y cuatro prendas; no sobrescribe registros existentes.
 5. En **Authentication > Providers**, confirma que Email está activado. Para pruebas internas puedes desactivar **Confirm email**; en producción conviene mantenerlo activado.
 
@@ -123,6 +123,8 @@ Los totales visibles en creación, Mis requerimientos y Administración se docum
 Administración incorpora filtros combinables en servidor, contador global, paginación, sumatoria de prendas y exportación XLSX SIDIGE con una fila por prenda. CSV permanece disponible y respeta los mismos filtros. Ejecuta la migración pendiente `202609020002_admin_sidige.sql` antes de desplegar esta versión; añade solo funciones de lectura con control admin, sin cambiar tablas ni RLS.
 
 Consulta [la guía de Administración y SIDIGE](docs/administracion-sidige.md) para el contrato de Excel, seguridad, despliegue y pruebas. `npm test` ejecuta las pruebas de datos y endpoints; `npm run test:ui` prueba los componentes en un entorno visual aislado.
+
+El mantenimiento, las importaciones web y la eliminación temporal de requerimientos de prueba están documentados en [mantenimiento administrativo](docs/mantenimiento-administrativo.md). La eliminación falla de forma segura mientras `ALLOW_TEST_REQUIREMENT_DELETION` no sea `true` en el servidor.
 
 ## Roles y edición de prendas
 

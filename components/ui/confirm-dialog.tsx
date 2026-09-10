@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { AlertTriangle, LoaderCircle, LogOut, X } from "lucide-react";
+import { AlertTriangle, LoaderCircle, LogOut, Trash2, X } from "lucide-react";
 
 export function ConfirmDialog({
   open, busy, onCancel, onConfirm, error,
@@ -8,9 +8,10 @@ export function ConfirmDialog({
   description = "Tendrás que volver a ingresar tus credenciales para continuar.",
   confirmLabel = "Sí, cerrar sesión",
   intent = "danger",
+  context = "logout",
 }: {
   error?: string; open: boolean; busy: boolean; onCancel: () => void; onConfirm: () => void;
-  title?: string; description?: string; confirmLabel?: string; intent?: "danger" | "warning";
+  title?: string; description?: string; confirmLabel?: string; intent?: "danger" | "warning"; context?: "logout" | "delete";
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -21,7 +22,7 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", close);
   }, [open, busy, onCancel]);
   if (!open) return null;
-  const Icon = intent === "danger" ? LogOut : AlertTriangle;
+  const Icon = context === "delete" ? Trash2 : intent === "danger" ? LogOut : AlertTriangle;
   return <div className="fixed inset-0 z-50 grid place-items-center bg-[#0B1F3A]/40 p-4" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !busy) onCancel(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" className="w-full max-w-sm rounded-xl border border-[#DCE3EC] bg-white p-5 shadow-[0_18px_48px_rgba(11,31,58,.18)]">
       <div className="flex items-start justify-between gap-4">

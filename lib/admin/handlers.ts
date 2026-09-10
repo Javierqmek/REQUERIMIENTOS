@@ -6,6 +6,7 @@ import { ADMIN_STATES, parseAdminQuery } from "./filters";
 import { exportRequirements, getAdminResults } from "./data";
 import { buildSidigeWorkbook, EmptyExportError, ExportLimitError, sidigeFilename } from "./workbook";
 import { SidigeValidationError } from "./sidige";
+import { allowTestRequirementDeletion } from "./config";
 
 type Dependencies = { getProfile: () => Promise<Profile | null>; getDb: () => Promise<SupabaseClient> };
 function json(body: unknown, status = 200) { return Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } }); }
@@ -35,6 +36,19 @@ export function makeAdminUpdateHandler(deps: Dependencies) {
       const { data, error } = await db.from("requerimientos").update({ estado: input.estado }).eq("id", input.id).select("id,estado").single();
       if (error || !data) return json({ error: "No se pudo actualizar el estado." }, 500);
       return json(data);
+    } catch (error) { return errorResponse(error); }
+  };
+}
+export function makeAdminDeleteHandler(deps: Dependencies, enabled = allowTestRequirementDeletion) {
+  return async (request: Request) => {
+    try {
+      if ((await deps.getProfile())?.role !== "admin") return json({ error: "No autorizado" }, 403);
+      if (!enabled()) return json({ error: "La eliminación de requerimientos de prueba está deshabilitada." }, 403);
+      const input = z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }).strict().parse(await readJsonBody(request, 8192));
+      if (new Set(input.ids).size !== input.ids.length) return json({ error: "No repitas requerimientos." }, 400);
+      const { data, error } = await (await deps.getDb()).rpc("admin_eliminar_requerimientos_prueba", { p_ids: input.ids });
+      if (error) return json({ error: error.code === "P0002" ? "Uno o más requerimientos ya no existen." : "No se pudieron eliminar los requerimientos." }, error.code === "P0002" ? 404 : 500);
+      return json({ eliminados: Number(data) });
     } catch (error) { return errorResponse(error); }
   };
 }

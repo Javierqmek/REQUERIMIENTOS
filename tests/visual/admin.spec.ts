@@ -6,7 +6,7 @@ for (const [width, height] of sizes) {
     await page.setViewportSize({ width, height });
     await page.goto("/admin/requerimientos");
     await page.getByRole("button", { name: "Filtros · Todos los requerimientos" }).click();
-    await expect(page.getByRole("heading", { name: "Administración", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Requerimientos", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "62 requerimientos encontrados" })).toBeVisible();
     const total = width >= 1280
       ? page.locator("table td").filter({ hasText: /^S\/ 40\.00$/ }).first()
@@ -105,4 +105,12 @@ for (const width of [320, 375]) test(`mensajes largos de éxito y error a ${widt
   await expect(page.getByText("Excel generado correctamente", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `.qa/admin-${width}-success.png` });
+});
+
+test("eliminación múltiple exige confirmación y refresca conteo",async({page})=>{
+  await page.setViewportSize({width:1440,height:900});await page.goto("/admin/requerimientos?delete=1");
+  const boxes=page.locator("table tbody input[type=checkbox]");await boxes.nth(0).check();await boxes.nth(1).check();
+  await page.getByRole("button",{name:"Eliminar seleccionados"}).click();await expect(page.getByRole("dialog")).toContainText("2 requerimientos de prueba");
+  await page.getByRole("button",{name:"Sí, eliminar permanentemente"}).click();await expect(page.getByText("2 requerimientos eliminados correctamente")).toBeVisible();
+  await expect(page.getByRole("heading",{name:"60 requerimientos encontrados"})).toBeVisible();
 });

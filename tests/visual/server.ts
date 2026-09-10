@@ -30,6 +30,12 @@ const records = Array.from({ length: 62 }, (_, index) => {
     estado: (["Pendiente", "Atendido", "Observado"] as Estado[])[index % 3],
   });
 });
+const catalogRows = {
+  clientes: options.clientes.map((row,index)=>({...row,activo:index===0})),
+  unidades: options.unidades.map((row,index)=>({...row,clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
+  personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
+  prendas: editGarments.map((row,index)=>({...row,activo:index!==1})),
+};
 function filtered(filters: AdminFilters) {
   if (filters.q === "sesion") return [fixtureRequirement()];
   if (filters.q === "incompleto") return [fixtureRequirement({ unidades: null })];
@@ -69,6 +75,26 @@ async function main() {
       const sendJson = (value: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
       if (url.pathname === "/test.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); res.end(js.outputFiles[0].text); return; }
       if (url.pathname === "/test.css") { res.writeHead(200, { "Content-Type": "text/css" }); res.end(css.css); return; }
+      if (url.pathname === "/api/admin/requerimientos/eliminar" && req.method === "DELETE") {
+        let body=""; for await(const chunk of req) body+=chunk.toString();
+        const ids=(JSON.parse(body).ids??[]) as string[];
+        for(const id of ids){const index=records.findIndex(row=>row.id===id);if(index>=0)records.splice(index,1)}
+        await delay(300); sendJson({eliminados:ids.length}); return;
+      }
+      if (url.pathname === "/api/admin/importaciones" && req.method === "POST") {
+        let body=""; for await(const chunk of req) body+=chunk.toString(); const input=JSON.parse(body);
+        await delay(250); sendJson(input.mode==="preview"?{rows:input.rows,issues:[],nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}:{nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}); return;
+      }
+      if (url.pathname === "/api/admin/catalogos") {
+        if(req.method==="PATCH"){let body="";for await(const chunk of req)body+=chunk.toString();const input=JSON.parse(body);sendJson({id:input.id,activo:input.activo});return;}
+        const kind=(url.searchParams.get("catalogo")||"clientes") as keyof typeof catalogRows;
+        let rows=[...catalogRows[kind]] as Record<string,unknown>[]; const q=(url.searchParams.get("q")||"").toLowerCase();
+        if(q)rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
+        if(client&&kind==="unidades")rows=rows.filter(row=>row.cliente_id===client);
+        if(client&&kind==="prendas")rows=rows.filter(row=>row.cliente===options.clientes.find(c=>c.id===client)?.nombre);
+        const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>row.genero===gender);
+        await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;
+      }
       if (req.method === "PATCH") {
         if (url.pathname.endsWith("/prendas")) { await delay(700); sendJson({ message: "Prendas actualizadas correctamente." }); return; }
         let body = ""; for await (const chunk of req) body += chunk.toString();
