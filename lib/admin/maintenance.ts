@@ -20,8 +20,54 @@ export async function getCatalogRows(db: SupabaseClient, raw: ReturnType<typeof 
     p_genero: raw.genero || null, p_limite: pageSize, p_offset: (raw.page - 1) * pageSize,
   });
   if (error) throw new Error("No se pudo consultar el catálogo.");
-  return { ...(data as { rows: Record<string, unknown>[]; total: number }), page: raw.page, pageSize };
+  const result = data as { rows: Record<string, unknown>[]; total: number };
+  if ((raw.catalogo === "clientes" || raw.catalogo === "unidades") && result.rows.length) {
+    const { data: capabilities, error: capabilityError } = await db.rpc("admin_capacidades_catalogo", {
+      p_catalogo: raw.catalogo, p_ids: result.rows.map(row => row.id),
+    });
+    if (capabilityError) throw new Error("No se pudieron validar las relaciones del catálogo.");
+    const safe = (capabilities ?? {}) as Record<string, boolean>;
+    result.rows = result.rows.map(row => ({
+      ...row, puede_eliminar: safe[String(row.id)] === true,
+      ...(raw.catalogo === "unidades" ? { puede_cambiar_cliente: safe[String(row.id)] === true } : {}),
+    }));
+  }
+  return { ...result, page: raw.page, pageSize };
 }
+
+const shortText = (max: number, label: string) => z.string().trim().min(1, `${label} es obligatorio.`).max(max);
+const clientValues = z.object({ nombre: shortText(200, "El nombre") }).strict();
+const unitValues = z.object({ cliente_id: z.string().uuid("Selecciona un cliente válido."), nombre: shortText(200, "El nombre") }).strict();
+const personValues = z.object({
+  codigo_personal: shortText(80, "El código"), nombre: shortText(200, "El nombre"),
+  dni: z.string().trim().regex(/^\d{8,12}$/, "El DNI debe tener entre 8 y 12 dígitos."),
+  cargo: shortText(120, "El cargo"),
+}).strict();
+const garmentValues = z.object({
+  codigo_prenda: shortText(80, "El código"), nombre_prenda: shortText(240, "El nombre"),
+  codigo_almacen: shortText(80, "El código de almacén"),
+  precio: z.number().finite().min(0).max(9999999999.99).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8, "Usa como máximo dos decimales."),
+  cantidad: z.number().int().min(1).max(10000),
+  cliente_id: z.string().uuid("Selecciona un cliente válido."),
+  genero: z.enum(["HOMBRE", "MUJER", "AMBOS"]),
+}).strict();
+const createSchemas = [
+  z.object({ catalogo: z.literal("clientes"), valores: clientValues }).strict(),
+  z.object({ catalogo: z.literal("unidades"), valores: unitValues }).strict(),
+  z.object({ catalogo: z.literal("personal"), valores: personValues }).strict(),
+  z.object({ catalogo: z.literal("prendas"), valores: garmentValues }).strict(),
+] as const;
+const updateSchemas = [
+  z.object({ catalogo: z.literal("clientes"), id: z.string().uuid(), valores: clientValues }).strict(),
+  z.object({ catalogo: z.literal("unidades"), id: z.string().uuid(), valores: unitValues }).strict(),
+  z.object({ catalogo: z.literal("personal"), id: z.string().uuid(), valores: personValues }).strict(),
+  z.object({ catalogo: z.literal("prendas"), id: z.string().uuid(), valores: garmentValues }).strict(),
+] as const;
+export const catalogCreateSchema = z.discriminatedUnion("catalogo", createSchemas);
+export const catalogUpdateSchema = z.discriminatedUnion("catalogo", updateSchemas);
+export const catalogDeleteSchema = z.object({
+  catalogo: z.enum(["clientes", "unidades"]), id: z.string().uuid(),
+}).strict();
 
 export const IMPORT_KINDS = ["personal", "prendas"] as const;
 export type ImportKind = typeof IMPORT_KINDS[number];

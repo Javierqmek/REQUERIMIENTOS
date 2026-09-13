@@ -36,6 +36,8 @@ const catalogRows = {
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
   prendas: editGarments.map((row,index)=>({...row,activo:index!==1})),
 };
+let catalogSequence=100;
+function catalogId(){catalogSequence++;return "99000000-0000-4000-8000-"+String(catalogSequence).padStart(12,"0")}
 function filtered(filters: AdminFilters) {
   if (filters.q === "sesion") return [fixtureRequirement()];
   if (filters.q === "incompleto") return [fixtureRequirement({ unidades: null })];
@@ -86,13 +88,27 @@ async function main() {
         await delay(250); sendJson(input.mode==="preview"?{rows:input.rows,issues:[],nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}:{nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}); return;
       }
       if (url.pathname === "/api/admin/catalogos") {
-        if(req.method==="PATCH"){let body="";for await(const chunk of req)body+=chunk.toString();const input=JSON.parse(body);sendJson({id:input.id,activo:input.activo});return;}
+        if(req.method!=="GET"){
+          let body="";for await(const chunk of req)body+=chunk.toString();const input=JSON.parse(body);
+          const kind=input.catalogo as keyof typeof catalogRows,rows=catalogRows[kind] as Record<string,unknown>[];
+          if(req.method==="PATCH"){const row=rows.find(item=>item.id===input.id);if(row)row.activo=input.activo;sendJson(row??{error:"Registro no encontrado"},row?200:404);return;}
+          if(req.method==="DELETE"){const index=rows.findIndex(item=>item.id===input.id);if(index<0){sendJson({error:"Registro no encontrado"},404);return;}rows.splice(index,1);sendJson({id:input.id,catalogo:kind});return;}
+          const values=input.valores as Record<string,unknown>;
+          if(kind==="clientes"&&rows.some(row=>String(row.nombre).toLowerCase()===String(values.nombre).toLowerCase()&&row.id!==input.id)){sendJson({error:"Ya existe un cliente con ese nombre"},409);return;}
+          let row=rows.find(item=>item.id===input.id);
+          if(!row){row={id:catalogId(),activo:true};rows.push(row);}
+          Object.assign(row,values);
+          if(kind==="unidades"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.clientes={nombre:selected?.nombre??"Cliente nuevo"};}
+          if(kind==="prendas"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.cliente=selected?.nombre??"Cliente nuevo";delete row.cliente_id;}
+          sendJson({accion:req.method==="POST"?"crear":"editar",row},req.method==="POST"?201:200);return;
+        }
         const kind=(url.searchParams.get("catalogo")||"clientes") as keyof typeof catalogRows;
         let rows=[...catalogRows[kind]] as Record<string,unknown>[]; const q=(url.searchParams.get("q")||"").toLowerCase();
         if(q)rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
         if(client&&kind==="unidades")rows=rows.filter(row=>row.cliente_id===client);
         if(client&&kind==="prendas")rows=rows.filter(row=>row.cliente===options.clientes.find(c=>c.id===client)?.nombre);
         const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>row.genero===gender);
+        if(kind==="clientes"||kind==="unidades")rows=rows.map(row=>({...row,puede_eliminar:!["RENIEC","CLIENTE CON NOMBRE CORPORATIVO EXTENSO","OFICINA REGISTRAL ATE","SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA"].includes(String(row.nombre)),...(kind==="unidades"?{puede_cambiar_cliente:!String(row.nombre).includes("OFICINA")}: {})}));
         await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;
       }
       if (req.method === "PATCH") {

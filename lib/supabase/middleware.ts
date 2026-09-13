@@ -44,7 +44,7 @@ export async function updateSession(request: NextRequest, makeClient: typeof cre
     }
     if (user && pathname === "/login") {
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-      if (profile && ["admin", "coordinador"].includes(profile.role)) return finish(NextResponse.redirect(new URL("/inicio", request.url)));
+      if (profile && ["admin", "coordinador", "gerente"].includes(profile.role)) return finish(NextResponse.redirect(new URL("/inicio", request.url)));
     }
     return finish();
   } catch {

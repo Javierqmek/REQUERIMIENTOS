@@ -25,6 +25,6 @@ if (query.get("estado") === "Observado") fixture.requerimiento.estado = "Observa
 const profile = editing && query.get("role") !== "admin" ? editProfile : { ...editProfile, role: "admin" as const };
 createRoot(document.getElementById("root")!).render(
   <AppShell profile={profile}>
-    {editing ? <EditRequirement initial={fixture} profile={profile}/> : creating ? <NewRequirement/> : listing ? <RequirementsList rows={window.__ADMIN_FIXTURE__.initial.rows}/> : maintenance ? <AdminMaintenance clients={window.__ADMIN_FIXTURE__.options.clientes}/> : importing ? <AdminImports/> : <><AdminSectionNav/><AdminRequirements {...window.__ADMIN_FIXTURE__} allowDeletion={query.get("delete")==="1"}/></>}
+    {editing ? <EditRequirement initial={fixture} profile={profile}/> : creating ? <NewRequirement/> : listing ? <RequirementsList rows={window.__ADMIN_FIXTURE__.initial.rows}/> : maintenance ? <AdminMaintenance clients={window.__ADMIN_FIXTURE__.options.clientes.map(client=>({...client,activo:true}))}/> : importing ? <AdminImports/> : <><AdminSectionNav/><AdminRequirements {...window.__ADMIN_FIXTURE__} allowDeletion={query.get("delete")==="1"}/></>}
   </AppShell>
 );

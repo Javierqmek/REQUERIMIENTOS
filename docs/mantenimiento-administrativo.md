@@ -2,7 +2,7 @@
 
 ## Despliegue
 
-No se ejecutó SQL remotamente. Si las migraciones anteriores ya están aplicadas, ejecuta una sola vez el contenido completo de `supabase/migrations/202609100003_mantenimiento_importaciones_borrado_pruebas.sql`, después de `202609100002_totales_requerimientos.sql`, y luego despliega el frontend.
+No se ejecutó SQL remotamente. Si las migraciones anteriores ya están aplicadas, ejecuta una sola vez y en orden `supabase/migrations/202609100003_mantenimiento_importaciones_borrado_pruebas.sql` y `supabase/migrations/202609130001_admin_catalogos_crud.sql`, y luego despliega el frontend.
 
 La migración no concede `DELETE` sobre tablas, no desactiva RLS ni deshabilita triggers. Las operaciones elevadas viven en `private`; las fachadas públicas son `SECURITY INVOKER`, requieren sesión autenticada y vuelven a validar el rol admin en PostgreSQL.
 
@@ -28,7 +28,20 @@ La RPC acepta de 1 a 100 UUID únicos, bloquea y verifica que todos existan ante
 
 ## Catálogos
 
-Administración → Mantenimiento permite listar, buscar, paginar y cambiar `activo` en clientes, unidades, personal y prendas. Unidades se filtran por cliente; prendas por cliente y género. No existe borrado físico de catálogos. Los formularios nuevos ya filtran `activo = true`, mientras las políticas históricas conservan los nombres asociados a requerimientos existentes.
+Administración → Mantenimiento permite listar, buscar, paginar, crear, editar y cambiar `activo` en clientes, unidades, personal y prendas. Unidades se filtran por cliente; prendas por cliente y género. Cliente y unidad solo ofrecen eliminación definitiva cuando la consulta no detecta relaciones; la RPC repite esa comprobación bajo bloqueo antes de borrar. Personal y prendas nunca ofrecen borrado físico.
+
+Renombrar un cliente actualiza en la misma transacción el campo legado `prendas.cliente`; los UUID de requerimientos y las líneas de detalle permanecen intactos. Una unidad usada no puede cambiar de cliente. Un cliente inactivo no admite nuevas unidades activas hasta ser reactivado.
+
+La tabla privada `private.admin_catalog_audit` registra usuario, acción, catálogo, identificador, valores anteriores/posteriores y fecha. No es accesible por `anon` ni `authenticated`.
+
+Antes de aplicar la migración, comprueba que no existan duplicados ignorando mayúsculas/minúsculas:
+
+```sql
+select lower(btrim(nombre)), count(*) from public.clientes group by 1 having count(*) > 1;
+select cliente_id, lower(btrim(nombre)), count(*) from public.unidades group by 1,2 having count(*) > 1;
+```
+
+Si alguna consulta devuelve filas, corrige esos nombres manualmente antes de migrar. La migración falla de forma transaccional y no elimina datos.
 
 ## Importaciones CSV
 
