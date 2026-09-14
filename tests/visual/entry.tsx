@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AppShell } from "../../components/app-shell";
 import { AdminRequirements } from "../../components/admin-requirements";
 import { EditRequirement } from "../../components/edit-requirement";
-import { NewRequirement } from "../../components/new-requirement";
+import NewRequirement from "../../components/new-requirement";
 import { RequirementsList } from "../../components/requirements-list";
 import { AdminMaintenance } from "../../components/admin-maintenance";
 import { AdminImports } from "../../components/admin-imports";

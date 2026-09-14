@@ -14,7 +14,7 @@ import { genderLabel, isGenderCompatible, type GenderChoice } from "@/lib/garmen
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
 import type { Cliente, Personal, Prenda, Unidad } from "@/lib/types";
 
-export function NewRequirement() {
+export default function NewRequirement() {
   const supabase = useMemo(() => createClient(), []);
   const savingRef = useRef(false);
   const [step, setStep] = useState<1 | 2>(1);
