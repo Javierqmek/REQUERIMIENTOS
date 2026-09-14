@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { PDFDict,PDFDocument,PDFName } from "pdf-lib";
+import { degrees,PDFDict,PDFDocument,PDFName } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { makeCorporateStamp,safePdfName,sha256,validatePdf } from "../lib/documents/security";
+import { makeCorporateStamp,normalizeImportedSignatureAsset,safePdfName,sha256,validatePdf } from "../lib/documents/security";
 import { createSignedPdf } from "../lib/documents/pdf";
 import { fitImageInPlacement,normalizePageRotation } from "../lib/documents/placement";
 import { documentBasePath } from "../lib/documents/version";
@@ -70,3 +70,39 @@ test("la UX permite enviar sin firma y exige preview vigente para firmar",async(
 test("el historial conserva eventos pero resume descargas repetidas",async()=>{const source=await readFile("components/document-history.tsx","utf8");assert.match(source,/Documento descargado.*downloads\.length/);assert.match(source,/Ver trazabilidad completa/);for(const event of ["CREADO","ENVIADO","OBSERVADO","RECHAZADO","FIRMADO"])assert.match(source,new RegExp(event))});
 test("los activos y la vista previa se sirven con sesión y almacenamiento privado",async()=>{const [profile,asset,preview]=await Promise.all([readFile("app/api/perfil/firma/route.ts","utf8"),readFile("app/api/documentos/[id]/archivo/route.ts","utf8"),readFile("app/api/documentos/[id]/preview/route.ts","utf8")]);assert.match(profile,/getCurrentProfile/);assert.match(asset,/getCurrentProfile/);assert.match(asset,/documento_firmas/);assert.match(asset,/Cache-Control":"private, no-store"/);assert.match(preview,/getCurrentProfile/);assert.match(preview,/createSignedPdf/);assert.match(preview,/Cache-Control":"private, no-store"/);assert.doesNotMatch(profile+asset+preview,/getPublicUrl|createSignedUrl|service_role/i)});
 test("la migración incremental conserva evidencia completa y permisos mínimos",async()=>{const sql=await readFile("supabase/migrations/202609140002_firma_evidencia.sql","utf8");for(const field of ["usuario_id","nombre","rol","cargo","perfil_firma_id","perfil_firma_version","version_firmada","path_previo","sha256_previo","path_resultante","sha256_resultante","fecha_servidor"])assert.match(sql,new RegExp("'"+field+"'"));assert.match(sql,/archivo_coordinador_path is not null/);assert.match(sql,/p_tipo not in \('original','coordinador','firmado'\)/);assert.match(sql,/revoke all on function public\.confirmar_firma_coordinador/);assert.match(sql,/revoke all on function public\.confirmar_firma_documento/);assert.match(sql,/grant execute on function public\.confirmar_firma_documento[^;]+ to authenticated/);assert.doesNotMatch(sql,/disable row level security|service_role/i)});
+
+test("un PNG importado se conserva byte a byte como activo final",async()=>{
+ const source=await sharp({create:{width:240,height:100,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:Buffer.from('<svg width="240" height="100"><path d="M8 75 C70 5 130 95 232 20" fill="none" stroke="#17365d" stroke-width="7"/></svg>')}]).png().toBuffer();
+ const result=await normalizeImportedSignatureAsset(new File([source],"firma-sello.png",{type:"image/png"}));
+ assert.deepEqual(Buffer.from(result.bytes),source);assert.equal(result.hash,sha256(source));
+});
+
+test("un WebP importado conserva dimensiones y transparencia sin componer texto",async()=>{
+ const source=await sharp({create:{width:180,height:80,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:Buffer.from('<svg width="180" height="80"><circle cx="90" cy="40" r="24" fill="#174EA6" fill-opacity=".7"/></svg>')}]).webp({lossless:true}).toBuffer();
+ const result=await normalizeImportedSignatureAsset(new File([source],"firma.webp",{type:"image/webp"}));const meta=await sharp(result.bytes).metadata();
+ assert.equal(meta.format,"png");assert.equal(meta.width,180);assert.equal(meta.height,80);assert.equal(meta.hasAlpha,true);
+});
+
+test("la firma importada usa una sola imagen final y omite la plantilla corporativa",async()=>{
+ const [route,form]=await Promise.all([readFile("app/api/perfil/firma/route.ts","utf8"),readFile("components/signature-profile-form.tsx","utf8")]);
+ assert.match(route,/p_firma_path:assetPath,p_firma_sha256:asset\.hash,p_sello_path:assetPath,p_sello_sha256:asset\.hash/);
+ assert.match(form,/No se agregarán textos, nombre, cargo, logo ni plantilla corporativa/);assert.match(form,/mode==="DIBUJADA"/);
+});
+
+test("el visor fija la rotación inicial y evita que un render anterior reemplace al vigente",async()=>{
+ const source=await readFile("components/document-workspace.tsx","utf8");
+ assert.match(source,/rotation=pdfPage\.rotate/);assert.match(source,/getViewport\(\{scale:1,rotation\}\)/);assert.match(source,/document\.createElement\("canvas"\)/);assert.match(source,/if\(!isCurrent\(\)\)return false/);assert.match(source,/renderSequence\.current/);
+});
+
+test("el detalle carga explícitamente la versión intermedia para el gerente",async()=>{
+ const page=await readFile("app/(private)/documentos/[id]/page.tsx","utf8");
+ assert.match(page,/managerReview\?\(coordinatorSigned\?"coordinador":"original"\)/);assert.doesNotMatch(page,/managerReview\?"base"/);
+});
+test("la versión intermedia y final conservan la orientación real de cada página",async()=>{
+ const original=await PDFDocument.create();const page=original.addPage([600,800]);page.setRotation(degrees(180));const originalBytes=await original.save();
+ const asset=await sharp({create:{width:160,height:60,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:Buffer.from('<svg width="160" height="60"><path d="M5 45 C45 2 100 58 155 10" fill="none" stroke="#0B1F3A" stroke-width="5"/></svg>')}]).png().toBuffer();
+ const files:Record<string,Uint8Array>={"rotated.pdf":originalBytes,"asset.png":asset};const db={storage:{from:()=>({download:async(path:string)=>({data:new Blob([asArrayBuffer(files[path])]),error:null})})}} as unknown as SupabaseClient;
+ const intermediate=await createSignedPdf(db,"rotated.pdf",[{tipo:"SELLO",pagina:1,x:.15,y:.7,ancho:.25,alto:.1,asset_path:"asset.png"}]);files["intermediate-rotated.pdf"]=intermediate.bytes;
+ const final=await createSignedPdf(db,"intermediate-rotated.pdf",[{tipo:"SELLO",pagina:1,x:.6,y:.7,ancho:.25,alto:.1,asset_path:"asset.png"}]);
+ assert.equal((await PDFDocument.load(intermediate.bytes)).getPage(0).getRotation().angle,180);assert.equal((await PDFDocument.load(final.bytes)).getPage(0).getRotation().angle,180);
+});

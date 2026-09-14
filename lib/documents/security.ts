@@ -27,6 +27,14 @@ export async function normalizeSignature(file:File){
   const bytes=await sharp(input).resize({width:1400,height:600,fit:"inside",withoutEnlargement:true}).png().toBuffer();
   return {bytes,hash:sha256(bytes)};
 }
+export async function normalizeImportedSignatureAsset(file:File){
+  if(file.size>2*1024*1024)throw new Error("La imagen no puede superar 2 MB.");
+  const input=Buffer.from(await file.arrayBuffer());
+  const meta=await sharp(input,{failOn:"error"}).metadata();
+  if(!["png","webp"].includes(meta.format||"")||!meta.width||!meta.height||meta.width>2400||meta.height>1200)throw new Error("Usa una imagen PNG o WebP válida, de hasta 2400 × 1200 px.");
+  const bytes=meta.format==="png"?input:await sharp(input).png({compressionLevel:9}).toBuffer();
+  return {bytes:new Uint8Array(bytes),hash:sha256(bytes)};
+}
 export async function makeCorporateStamp(name:string,role:string,signatureBytes?:Uint8Array|null,logoDataUri?:string){
   const clean=(value:string)=>value.replace(/[<>&'"]/g,"").slice(0,80);
   const safeLogo=logoDataUri?.startsWith("data:image/")?logoDataUri.replace(/"/g,"&quot;"):null;
