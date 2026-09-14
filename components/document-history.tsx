@@ -13,9 +13,9 @@ function EventRow({event}:{event:Event}){
 }
 export function DocumentHistory({events}:{events:Event[]}){
  const [expanded,setExpanded]=useState(false);
- const summary=useMemo(()=>events.filter(event=>important.has(event.accion)).toReversed(),[events]);
+ const summary=useMemo(()=>events.filter(event=>important.has(event.accion)).slice().reverse(),[events]);
  const downloads=events.filter(event=>event.accion==="DESCARGADO");
- const technical=events.filter(event=>!important.has(event.accion)&&event.accion!=="DESCARGADO").toReversed();
+ const technical=events.filter(event=>!important.has(event.accion)&&event.accion!=="DESCARGADO").slice().reverse();
  return <section className="section-card mt-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="section-title">Historial</h2><p className="metadata mt-1">Hitos principales del documento</p></div><button className="btn btn-ghost px-2" onClick={()=>setExpanded(value=>!value)} aria-expanded={expanded}>{expanded?<ChevronUp size={16}/>:<ChevronDown size={16}/>} {expanded?"Ocultar trazabilidad":"Ver trazabilidad completa"}</button></div>
  <ol className="mt-5">{summary.map(event=><EventRow key={event.id} event={event}/>)}</ol>
  {expanded&&<div className="mt-5 border-t border-[#DCE3EC] pt-4"><h3 className="flex items-center gap-2 text-sm font-semibold text-[#0B1F3A]"><Clock3 size={16}/>Trazabilidad técnica</h3>{downloads.length>0&&<details className="mt-3 rounded-lg border border-[#DCE3EC] bg-[#F8FAFC] px-3 py-2"><summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#45556D]"><Download size={15}/>Documento descargado {downloads.length} {downloads.length===1?"vez":"veces"}</summary><ol className="mt-2 space-y-1 border-t border-[#DCE3EC] pt-2">{downloads.map(event=><li className="text-xs text-[#607089]" key={event.id}>{actor(event)} · {date(event.created_at)}</li>)}</ol></details>}<ol className="mt-4">{technical.map(event=><EventRow key={event.id} event={event}/>)}</ol>{downloads.length===0&&technical.length===0&&<p className="mt-3 text-sm text-[#607089]">No hay eventos técnicos adicionales.</p>}</div>}

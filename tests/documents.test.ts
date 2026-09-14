@@ -10,6 +10,7 @@ import { documentBasePath,documentSigningBase,resolveDocumentVersion } from "../
 import sharp from "sharp";
 
 const asArrayBuffer=(bytes:Uint8Array)=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
+test("el historial evita métodos ES2023 y conserva el orden original",async()=>{const source=await readFile("components/document-history.tsx","utf8");assert.doesNotMatch(source,/\.(?:toReversed|toSorted|toSpliced|with|findLast|findLastIndex)\s*\(/);assert.match(source,/\.slice\(\)\.reverse\(\)/);const original=[1,2,3];const reversed=original.slice().reverse();assert.deepEqual(reversed,[3,2,1]);assert.deepEqual(original,[1,2,3])});
 test("normaliza nombres de PDF sin permitir rutas",()=>{assert.equal(safePdfName("../../contrato<script>.PDF"),"contratoscript.pdf")});
 test("calcula SHA-256 estable",()=>{assert.equal(sha256(new TextEncoder().encode("Seguroc")),"2a5d76a49d8a4a199ca3ac8abfe45834a71633ee8bc0e9f903e0d17d8434a060")});
 test("valida un PDF auténtico y cuenta páginas",async()=>{const pdf=await PDFDocument.create();pdf.addPage();pdf.addPage();const bytes=await pdf.save();const result=await validatePdf(new File([asArrayBuffer(bytes)],"prueba.pdf",{type:"application/pdf"}));assert.equal(result.pages,2);assert.equal(result.hash.length,64)});
