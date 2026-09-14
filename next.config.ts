@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 import { securityHeaders } from "./lib/security/headers";
 
+const isVercel = process.env.VERCEL === "1";
+
 const nextConfig: NextConfig = {
-  distDir: process.env.NEXT_DIST_DIR || ".next-build",
+  distDir: isVercel ? ".next" : process.env.NEXT_DIST_DIR || ".next-build",
   reactStrictMode: true,
   poweredByHeader: false,
   async headers() {
