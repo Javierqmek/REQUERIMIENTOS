@@ -1,7 +1,8 @@
-import { PDFDocument } from "pdf-lib";
+import { degrees,PDFDocument } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Placement } from "./types";
 import { DOCUMENT_BUCKET,sha256 } from "./security";
+import { fitImageInPlacement } from "./placement";
 
 export async function createSignedPdf(db:SupabaseClient,originalPath:string,placements:Placement[]){
   const original=await db.storage.from(DOCUMENT_BUCKET).download(originalPath);
@@ -17,8 +18,8 @@ export async function createSignedPdf(db:SupabaseClient,originalPath:string,plac
     }
     const page=pdf.getPage(placement.pagina-1);if(!page)throw new Error("Página de firma inválida.");
     const image=await pdf.embedPng(assets.get(placement.asset_path)!);
-    const {width,height}=page.getSize();const drawWidth=placement.ancho*width;const drawHeight=placement.alto*height;
-    page.drawImage(image,{x:placement.x*width,y:height-placement.y*height-drawHeight,width:drawWidth,height:drawHeight});
+    const crop=page.getCropBox();const rect=fitImageInPlacement(image,{...crop,rotation:page.getRotation().angle},placement);
+    page.drawImage(image,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,rotate:degrees(rect.rotation)});
   }
   const bytes=await pdf.save({useObjectStreams:true});return {bytes,hash:sha256(bytes)};
 }

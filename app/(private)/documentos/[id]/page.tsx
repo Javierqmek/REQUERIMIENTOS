@@ -1,0 +1,26 @@
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/auth";
+import { DocumentStatusBadge } from "@/components/document-status-badge";
+import { DocumentWorkspace } from "@/components/document-workspace";
+import { DocumentHistory } from "@/components/document-history";
+import type { DocumentRow,Placement } from "@/lib/documents/types";
+import { documentTypeLabel } from "@/lib/documents/types";
+
+export default async function DocumentDetailPage({params}:{params:Promise<{id:string}>}){
+ const id=(await params).id;const profile=await getCurrentProfile();if(!profile)notFound();const db=await createClient();
+ const [{data},{data:placements},{data:signature},{data:events}]=await Promise.all([
+  db.from("documentos").select("id,tipo,trabajador_id,usuario_creador_id,firmante_id,estado,observacion,comentario_decision,archivo_original_nombre,archivo_original_path,archivo_original_sha256,archivo_coordinador_path,archivo_coordinador_sha256,coordinador_firmado_at,coordinador_firmante_id,archivo_firmado_path,archivo_firmado_sha256,paginas,created_at,enviado_at,firmado_at,personal(nombre,dni,cargo),creador:profiles!documentos_usuario_creador_id_fkey(nombre),coordinador_firmante:profiles!documentos_coordinador_firmante_id_fkey(nombre),firmante:profiles!documentos_firmante_id_fkey(nombre)").eq("id",id).maybeSingle(),
+  db.from("documento_firmas").select("id,usuario_id,tipo,pagina,x,y,ancho,alto,asset_path").eq("documento_id",id),
+  db.from("perfiles_firma").select("id").eq("usuario_id",profile.id).eq("activo",true).maybeSingle(),
+  db.from("documento_eventos").select("id,accion,comentario,created_at,profiles(nombre)").eq("documento_id",id).order("created_at",{ascending:false}).limit(100),
+ ]);
+ if(!data)notFound();const doc=data as unknown as DocumentRow;const coordinatorSigned=Boolean(doc.archivo_coordinador_path);
+ const managerReview=profile.role==="gerente"&&doc.estado==="PENDIENTE_FIRMA";const pdfType=doc.estado==="FIRMADO"?"firmado":managerReview?"base":coordinatorSigned?"coordinador":"original";
+ const editable=doc.estado!=="FIRMADO"&&((profile.role==="coordinador"&&!coordinatorSigned)||(profile.role==="gerente"&&doc.estado==="PENDIENTE_FIRMA"));
+ const visiblePlacements=editable?(placements||[]).filter(row=>row.usuario_id===profile.id):[];
+ return <section className="mx-auto max-w-7xl"><header className="page-header"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="page-eyebrow">Gestión documental</p><h1 className="page-title">{documentTypeLabel[doc.tipo]}</h1></div><div className="flex flex-wrap items-center gap-2"><DocumentStatusBadge status={doc.estado}/>{coordinatorSigned&&<span className="inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold leading-none text-emerald-800">Firmado por coordinador</span>}</div></div><dl className="mt-4 grid gap-x-6 gap-y-3 rounded-xl border border-[#DCE3EC] bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"><div><dt className="metadata">Trabajador</dt><dd className="mt-0.5 truncate text-sm font-semibold text-[#172033]">{doc.personal?.nombre||"Sin identificar"}</dd></div><div><dt className="metadata">Creado por</dt><dd className="mt-0.5 truncate text-sm font-medium text-[#172033]">{doc.creador?.nombre||"Sin identificar"}</dd></div><div><dt className="metadata">Firmante</dt><dd className="mt-0.5 truncate text-sm font-medium text-[#172033]">{doc.firmante?.nombre||"Sin asignar"}</dd></div><div><dt className="metadata">Archivo</dt><dd className="mt-0.5 truncate text-sm font-medium text-[#172033]">{doc.archivo_original_nombre}</dd></div></dl>{managerReview&&coordinatorSigned&&<div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><div><strong className="text-sm font-semibold text-emerald-900">Firmado previamente por coordinador</strong><p className="mt-0.5 text-xs text-emerald-800">{doc.coordinador_firmante?.nombre||"Coordinador"} · {doc.coordinador_firmado_at?new Intl.DateTimeFormat("es-PE",{dateStyle:"medium",timeStyle:"short"}).format(new Date(doc.coordinador_firmado_at)):"Fecha no disponible"}</p></div><span className="text-xs font-medium text-emerald-800">Se muestra la versión intermedia</span></div>}{doc.comentario_decision&&<div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"><strong className="text-sm font-semibold text-amber-900">Motivo de la observación o rechazo</strong><p className="mt-0.5 text-sm text-amber-900">{doc.comentario_decision}</p></div>}</header>
+ <DocumentWorkspace id={id} pages={doc.paginas} status={doc.estado} role={profile.role} userId={profile.id} creatorId={doc.usuario_creador_id} signerId={doc.firmante_id} placements={visiblePlacements.map(row=>({...row,x:Number(row.x),y:Number(row.y),ancho:Number(row.ancho),alto:Number(row.alto)}) as Placement)} profileReady={Boolean(signature)} coordinatorSigned={coordinatorSigned} pdfType={pdfType}/>
+ <DocumentHistory events={(events||[]) as never[]}/>
+ <p className="mt-4 text-xs text-[#607089]">Firma electrónica de uso interno; no equivale a una firma digital certificada.</p></section>
+}

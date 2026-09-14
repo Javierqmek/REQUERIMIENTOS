@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { securityHeaders } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next-build",
   reactStrictMode: true,
   poweredByHeader: false,
   async headers() {

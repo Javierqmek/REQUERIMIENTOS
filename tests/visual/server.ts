@@ -14,6 +14,8 @@ import type { AdminFilters } from "../../lib/admin/filters";
 import type { AdminOptions, SidigeRequirement } from "../../lib/admin/types";
 import type { Estado } from "../../lib/types";
 import { editGarments } from "../fixtures/edit";
+import { PDFDocument } from "pdf-lib";
+import { makeCorporateStamp } from "../../lib/documents/security";
 
 const options: AdminOptions = {
   clientes: [{ id: IDS.cliente, nombre: "RENIEC" }, { id: "55000000-0000-4000-8000-000000000002", nombre: "CLIENTE CON NOMBRE CORPORATIVO EXTENSO" }],
@@ -53,13 +55,17 @@ function pageData(filters: AdminFilters, page: number) {
 }
 async function* groups(rows: SidigeRequirement[]) { yield* rows; }
 async function main() {
+  const testPdf=await PDFDocument.create();testPdf.addPage([595,842]);testPdf.addPage([595,842]);testPdf.addPage([595,842]);const testPdfBytes=await testPdf.save();const testStamp=await makeCorporateStamp("Gerente Seguroc","Gerente");
   const js = await build({
     entryPoints: ["tests/visual/entry.tsx"], bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic",
     plugins: [{ name: "isolated-test-adapters", setup(builder) {
-      builder.onResolve({ filter: /^next\/(link|navigation)$/ }, args => ({ path: args.path, namespace: "test-adapter" }));
+      builder.onResolve({ filter: /^next\/(link|navigation|image)$/ }, args => ({ path: args.path, namespace: "test-adapter" }));
+      builder.onResolve({ filter: /^pdfjs-dist$/ }, () => ({ path: "pdfjs-dist", namespace: "test-adapter" }));
       builder.onResolve({ filter: /lib\/supabase\/client$/ }, () => ({ path: "supabase", namespace: "test-adapter" }));
       builder.onLoad({ filter: /.*/, namespace: "test-adapter" }, args => ({
-        contents: args.path === "next/link" ? 'import React from "react"; export default function Link(p){return React.createElement("a",p)}' :
+        contents: args.path === "pdfjs-dist" ? 'export const GlobalWorkerOptions={workerSrc:"/test-worker.mjs"};export const getDocument=()=>({promise:Promise.resolve({getPage:async()=>({getViewport:({scale})=>({width:595*scale,height:842*scale}),render:()=>({promise:Promise.resolve()})})})});' :
+          args.path === "next/link" ? 'import React from "react"; export default function Link(p){return React.createElement("a",p)}' :
+          args.path === "next/image" ? 'import React from "react"; export default function Image({fill,unoptimized,...p}){void fill;void unoptimized;return React.createElement("img",p)}' :
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
           `const catalogs=${JSON.stringify({
             clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true }],
@@ -77,6 +83,10 @@ async function main() {
       const sendJson = (value: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
       if (url.pathname === "/test.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); res.end(js.outputFiles[0].text); return; }
       if (url.pathname === "/test.css") { res.writeHead(200, { "Content-Type": "text/css" }); res.end(css.css); return; }
+      if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/archivo")) { res.writeHead(200, { "Content-Type": "application/pdf" }); res.end(testPdfBytes); return; }
+      if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/preview") && req.method === "POST") { res.writeHead(200, { "Content-Type": "application/pdf", "Cache-Control":"private, no-store" }); res.end(testPdfBytes); return; }
+      if (url.pathname === "/api/perfil/firma") { res.writeHead(200, { "Content-Type": "image/png" }); res.end(testStamp.bytes); return; }
+      if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/accion") && req.method === "POST") { sendJson({ok:true}); return; }
       if (url.pathname === "/api/admin/requerimientos/eliminar" && req.method === "DELETE") {
         let body=""; for await(const chunk of req) body+=chunk.toString();
         const ids=(JSON.parse(body).ids??[]) as string[];

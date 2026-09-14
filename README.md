@@ -135,3 +135,6 @@ Desde el detalle, “Editar prendas” permite modificar el conjunto solicitado 
 Revisar [SECURITY_AUDIT.md](SECURITY_AUDIT.md), aplicar la migración de seguridad pendiente y completar su checklist. Confirmar en Supabase que signup público y usuarios anónimos estén deshabilitados. Las verificaciones locales no certifican el Dashboard ni GitHub remotos. Usar HTTPS en producción y `npm ci` para instalar las versiones del lockfile.
 
 La [revisión de los seis avisos de Supabase](docs/security-advisor.md) explica cuáles aceptar, la fachada compatible `public.is_admin()`/helper privado de 006 y la protección de contraseñas según plan. `supabase/inspection/security-advisor.sql` permite comparar la configuración real mediante consultas de solo lectura. No se trasladó `pg_trgm` ni se aplicaron migraciones remotamente durante esta revisión.
+# Módulo documental
+
+La arquitectura, seguridad, flujo, migración y checklist de firma electrónica interna están documentados en [docs/gestion-documentos-firma.md](docs/gestion-documentos-firma.md).

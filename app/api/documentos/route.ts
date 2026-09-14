@@ -3,7 +3,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { assertSameOrigin } from "@/lib/security/http";
 import { DOCUMENT_BUCKET,MAX_PDF_BYTES,validatePdf } from "@/lib/documents/security";
-const TYPES=new Set(["VACACIONES","PERMISO","MEMORANDO","OTRO"]);
+const TYPES=new Set(["VACACIONES","LICENCIA_CON_GOCE","LICENCIA_SIN_GOCE"]);
 
 export async function POST(request:Request){
   let uploadedPath="";

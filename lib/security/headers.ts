@@ -5,7 +5,7 @@ export function contentSecurityPolicy(nonce: string, supabaseUrl: string, produc
     "default-src 'self'", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'none'",
     "form-action 'self'", "frame-src 'none'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${production ? "" : " 'unsafe-eval'"}`,
-    "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "font-src 'self'",
+    "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "font-src 'self'", "worker-src 'self' blob:",
     `connect-src 'self' ${connect}${production ? "" : " ws://localhost:* ws://127.0.0.1:*"}`,
     ...(production ? ["upgrade-insecure-requests"] : []),
   ].join("; ");

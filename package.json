@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -17,8 +17,11 @@
     "exceljs": "^4.4.0",
     "lucide-react": "latest",
     "next": "latest",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.3.31",
     "react": "latest",
     "react-dom": "latest",
+    "sharp": "^0.35.3",
     "zod": "latest"
   },
   "overrides": {

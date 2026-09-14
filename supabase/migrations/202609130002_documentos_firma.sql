@@ -2,7 +2,7 @@
 -- Ejecutar después de 202609130001_admin_catalogos_crud.sql.
 alter type public.user_role add value if not exists 'gerente';
 begin;
-create type public.documento_tipo as enum ('VACACIONES','PERMISO','MEMORANDO','OTRO');
+create type public.documento_tipo as enum ('VACACIONES','LICENCIA_CON_GOCE','LICENCIA_SIN_GOCE');
 create type public.documento_estado as enum ('BORRADOR','PENDIENTE_FIRMA','OBSERVADO','FIRMADO','RECHAZADO');
 create type public.elemento_firma as enum ('FIRMA','SELLO');
 
@@ -182,6 +182,14 @@ declare v_doc public.documentos; begin select * into v_doc from public.documento
  if p_tipo not in ('original','firmado') then raise exception 'Tipo inválido' using errcode='22023'; end if;
  perform private.registrar_evento_documento(p_documento_id,'DESCARGADO',v_doc.estado,v_doc.estado,null,jsonb_build_object('tipo',p_tipo)); end $$;
 revoke all on function public.registrar_descarga_documento(uuid,text) from public,anon,authenticated; grant execute on function public.registrar_descarga_documento(uuid,text) to authenticated;
+
+create function public.admin_desactivar_perfil_firma(p_usuario_id uuid) returns void language plpgsql volatile security definer set search_path=pg_catalog,public,pg_temp as $$
+begin
+ if auth.uid() is null or not public.is_admin() then raise exception 'Solo administradores' using errcode='42501'; end if;
+ update public.perfiles_firma set activo=false where usuario_id=p_usuario_id and activo;
+end $$;
+revoke all on function public.admin_desactivar_perfil_firma(uuid) from public,anon,authenticated;
+grant execute on function public.admin_desactivar_perfil_firma(uuid) to authenticated;
 
 do $$ begin if to_regclass('storage.buckets') is not null then
  insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('documentos-firma','documentos-firma',false,20971520,array['application/pdf','image/png','image/webp'])
