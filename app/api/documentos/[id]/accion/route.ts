@@ -4,7 +4,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import { readJsonBody,HttpInputError } from "@/lib/security/http";
 import { createSignedPdf } from "@/lib/documents/pdf";
 import { DOCUMENT_BUCKET } from "@/lib/documents/security";
-import { documentBasePath } from "@/lib/documents/version";
+import { documentSigningBase } from "@/lib/documents/version";
 import type { Placement } from "@/lib/documents/types";
 
 export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){
@@ -21,9 +21,9 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       const prepared=await db.rpc("preparar_firma_coordinador",{p_documento_id:id});if(prepared.error)throw new Error(prepared.error.message);
       const token=prepared.data as string;let coordinatorPath="";
       try{
-        const {data:doc,error:docError}=await db.from("documentos").select("archivo_original_path").eq("id",id).single();if(docError)throw docError;
+        const {data:doc,error:docError}=await db.from("documentos").select("archivo_original_path,archivo_original_sha256").eq("id",id).single();if(docError)throw docError;
         const {data:placements,error:placementsError}=await db.from("documento_firmas").select("tipo,pagina,x,y,ancho,alto,asset_path").eq("documento_id",id).eq("usuario_id",profile.id);if(placementsError)throw placementsError;
-        const result=await createSignedPdf(db,doc.archivo_original_path,(placements||[]).map(row=>({...row,x:Number(row.x),y:Number(row.y),ancho:Number(row.ancho),alto:Number(row.alto)}) as Placement));
+        const result=await createSignedPdf(db,doc.archivo_original_path,(placements||[]).map(row=>({...row,x:Number(row.x),y:Number(row.y),ancho:Number(row.ancho),alto:Number(row.alto)}) as Placement),doc.archivo_original_sha256);
         coordinatorPath=`coordinador/${id}/${crypto.randomUUID()}.pdf`;const upload=await db.storage.from(DOCUMENT_BUCKET).upload(coordinatorPath,result.bytes,{contentType:"application/pdf",upsert:false});if(upload.error)throw upload.error;
         const confirmation=await db.rpc("confirmar_firma_coordinador",{p_documento_id:id,p_token:token,p_path:coordinatorPath,p_sha256:result.hash});
         if(confirmation.error){await db.storage.from(DOCUMENT_BUCKET).remove([coordinatorPath]);throw confirmation.error;}
@@ -34,9 +34,9 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       const prepared=await db.rpc("preparar_firma_documento",{p_documento_id:id});if(prepared.error)throw new Error(prepared.error.message);
       const token=prepared.data as string;let finalPath="";
       try{
-        const {data:doc,error:docError}=await db.from("documentos").select("archivo_original_path,archivo_coordinador_path").eq("id",id).single();if(docError)throw docError;
+        const {data:doc,error:docError}=await db.from("documentos").select("archivo_original_path,archivo_original_sha256,archivo_coordinador_path,archivo_coordinador_sha256").eq("id",id).single();if(docError)throw docError;
         const {data:placements,error:placementsError}=await db.from("documento_firmas").select("tipo,pagina,x,y,ancho,alto,asset_path").eq("documento_id",id).eq("usuario_id",profile.id);if(placementsError)throw placementsError;
-        const result=await createSignedPdf(db,documentBasePath(doc),(placements||[]).map(row=>({...row,x:Number(row.x),y:Number(row.y),ancho:Number(row.ancho),alto:Number(row.alto)}) as Placement));
+        const base=documentSigningBase(doc);const result=await createSignedPdf(db,base.path,(placements||[]).map(row=>({...row,x:Number(row.x),y:Number(row.y),ancho:Number(row.ancho),alto:Number(row.alto)}) as Placement),base.sha256);
         finalPath=`firmado/${id}/${crypto.randomUUID()}.pdf`;const upload=await db.storage.from(DOCUMENT_BUCKET).upload(finalPath,result.bytes,{contentType:"application/pdf",upsert:false});if(upload.error)throw upload.error;
         const confirmation=await db.rpc("confirmar_firma_documento",{p_documento_id:id,p_token:token,p_path:finalPath,p_sha256:result.hash});
         if(confirmation.error){await db.storage.from(DOCUMENT_BUCKET).remove([finalPath]);throw confirmation.error;}

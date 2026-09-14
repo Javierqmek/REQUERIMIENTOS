@@ -4,7 +4,7 @@ export type Placement = { id?:string; usuario_id?:string; tipo:"FIRMA"|"SELLO"; 
 export type DocumentRow = {
   id:string; tipo:DocumentType; trabajador_id:string; usuario_creador_id:string; firmante_id:string;
   estado:DocumentStatus; observacion:string|null; comentario_decision:string|null;
-  archivo_original_nombre:string; archivo_original_path:string; archivo_firmado_path:string|null;
+  archivo_original_nombre:string; archivo_original_path:string; archivo_original_sha256:string; archivo_firmado_path:string|null; archivo_firmado_sha256:string|null;
   archivo_coordinador_path:string|null; archivo_coordinador_sha256:string|null;
   coordinador_firmado_at:string|null; coordinador_firmante_id:string|null;
   paginas:number; created_at:string; enviado_at:string|null; firmado_at:string|null;

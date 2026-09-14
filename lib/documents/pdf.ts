@@ -4,10 +4,11 @@ import type { Placement } from "./types";
 import { DOCUMENT_BUCKET,sha256 } from "./security";
 import { fitImageInPlacement } from "./placement";
 
-export async function createSignedPdf(db:SupabaseClient,originalPath:string,placements:Placement[]){
+export async function createSignedPdf(db:SupabaseClient,originalPath:string,placements:Placement[],expectedSourceHash?:string){
   const original=await db.storage.from(DOCUMENT_BUCKET).download(originalPath);
   if(original.error)throw new Error("No se pudo leer el PDF original.");
-  const pdf=await PDFDocument.load(await original.data.arrayBuffer());
+  const sourceBytes=new Uint8Array(await original.data.arrayBuffer());if(expectedSourceHash&&sha256(sourceBytes)!==expectedSourceHash)throw new Error("La versión base no coincide con su hash registrado.");
+  const pdf=await PDFDocument.load(sourceBytes);
   const assets=new Map<string,Uint8Array>();
   for(const placement of placements){
     if(!placement.asset_path)throw new Error("Evidencia de firma incompleta.");

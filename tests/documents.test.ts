@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { makeCorporateStamp,normalizeImportedSignatureAsset,safePdfName,sha256,validatePdf } from "../lib/documents/security";
 import { createSignedPdf } from "../lib/documents/pdf";
 import { fitImageInPlacement,normalizePageRotation } from "../lib/documents/placement";
-import { documentBasePath } from "../lib/documents/version";
+import { documentBasePath,documentSigningBase,resolveDocumentVersion } from "../lib/documents/version";
 import sharp from "sharp";
 
 const asArrayBuffer=(bytes:Uint8Array)=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
@@ -55,9 +55,9 @@ test("la firma opcional del coordinador es incremental, inmutable y con permisos
 });
 test("el gerente firma la versión intermedia cuando existe y nunca reincrusta posiciones del coordinador",async()=>{
  const [route,preview,version]=await Promise.all([readFile("app/api/documentos/[id]/accion/route.ts","utf8"),readFile("app/api/documentos/[id]/preview/route.ts","utf8"),readFile("lib/documents/version.ts","utf8")]);
- assert.equal(documentBasePath({archivo_original_path:"original.pdf",archivo_coordinador_path:"intermedia.pdf"}),"intermedia.pdf");
- assert.equal(documentBasePath({archivo_original_path:"original.pdf",archivo_coordinador_path:null}),"original.pdf");
- assert.match(route,/documentBasePath\(doc\)/);assert.match(preview,/documentBasePath\(document\)/);assert.match(version,/archivo_coordinador_path\|\|document\.archivo_original_path/);
+ assert.equal(documentBasePath({archivo_original_path:"original.pdf",archivo_original_sha256:"1".repeat(64),archivo_coordinador_path:"intermedia.pdf",archivo_coordinador_sha256:"2".repeat(64)}),"intermedia.pdf");
+ assert.equal(documentBasePath({archivo_original_path:"original.pdf",archivo_original_sha256:"1".repeat(64),archivo_coordinador_path:null,archivo_coordinador_sha256:null}),"original.pdf");
+ assert.match(route,/documentSigningBase\(doc\)/);assert.match(preview,/documentSigningBase\(document\)/);assert.match(version,/if\(coordinator\)return coordinator/);
  assert.equal([...route.matchAll(/\.eq\("usuario_id",profile\.id\)/g)].length,2);
  assert.match(route,/cancelar_preparacion_firma_coordinador/);assert.match(route,/remove\(\[coordinatorPath\]\)/);
 });
@@ -65,7 +65,7 @@ test("la UX permite enviar sin firma y exige preview vigente para firmar",async(
  const source=await readFile("components/document-workspace.tsx","utf8");
  assert.match(source,/canSend=props\.coordinatorSigned\|\|\(!dirty&&previewed\)/);
  assert.match(source,/Firmar como coordinador/);assert.match(source,/Puedes enviarlo sin firma/);
- assert.match(source,/loadedPdfType\.current!==props\.pdfType/);
+ assert.match(source,/loadedPdfType\.current!==versionKey/);assert.match(source,/query\.set\("version",props\.pdfHash\)/);
 });
 test("el historial conserva eventos pero resume descargas repetidas",async()=>{const source=await readFile("components/document-history.tsx","utf8");assert.match(source,/Documento descargado.*downloads\.length/);assert.match(source,/Ver trazabilidad completa/);for(const event of ["CREADO","ENVIADO","OBSERVADO","RECHAZADO","FIRMADO"])assert.match(source,new RegExp(event))});
 test("los activos y la vista previa se sirven con sesión y almacenamiento privado",async()=>{const [profile,asset,preview]=await Promise.all([readFile("app/api/perfil/firma/route.ts","utf8"),readFile("app/api/documentos/[id]/archivo/route.ts","utf8"),readFile("app/api/documentos/[id]/preview/route.ts","utf8")]);assert.match(profile,/getCurrentProfile/);assert.match(asset,/getCurrentProfile/);assert.match(asset,/documento_firmas/);assert.match(asset,/Cache-Control":"private, no-store"/);assert.match(preview,/getCurrentProfile/);assert.match(preview,/createSignedPdf/);assert.match(preview,/Cache-Control":"private, no-store"/);assert.doesNotMatch(profile+asset+preview,/getPublicUrl|createSignedUrl|service_role/i)});
@@ -96,7 +96,7 @@ test("el visor fija la rotación inicial y evita que un render anterior reemplac
 
 test("el detalle carga explícitamente la versión intermedia para el gerente",async()=>{
  const page=await readFile("app/(private)/documentos/[id]/page.tsx","utf8");
- assert.match(page,/managerReview\?\(coordinatorSigned\?"coordinador":"original"\)/);assert.doesNotMatch(page,/managerReview\?"base"/);
+ assert.match(page,/const signingBase=documentSigningBase\(doc\)/);assert.match(page,/requestedVersion=doc\.estado==="FIRMADO"\?"firmado":signingBase\.type/);assert.match(page,/pdfHash=\{pdfVersion\.sha256\}/);
 });
 test("la versión intermedia y final conservan la orientación real de cada página",async()=>{
  const original=await PDFDocument.create();const page=original.addPage([600,800]);page.setRotation(degrees(180));const originalBytes=await original.save();
@@ -105,4 +105,18 @@ test("la versión intermedia y final conservan la orientación real de cada pág
  const intermediate=await createSignedPdf(db,"rotated.pdf",[{tipo:"SELLO",pagina:1,x:.15,y:.7,ancho:.25,alto:.1,asset_path:"asset.png"}]);files["intermediate-rotated.pdf"]=intermediate.bytes;
  const final=await createSignedPdf(db,"intermediate-rotated.pdf",[{tipo:"SELLO",pagina:1,x:.6,y:.7,ancho:.25,alto:.1,asset_path:"asset.png"}]);
  assert.equal((await PDFDocument.load(intermediate.bytes)).getPage(0).getRotation().angle,180);assert.equal((await PDFDocument.load(final.bytes)).getPage(0).getRotation().angle,180);
+});
+test("E2E: el gerente recibe por path y hash la versión física firmada por el coordinador",async()=>{
+ const original=await PDFDocument.create();original.addPage([600,800]);const originalBytes=await original.save();const originalPath="original/coordinador/documento.pdf";const originalHash=sha256(originalBytes);
+ const [coordinatorAsset,managerAsset]=await Promise.all([makeCorporateStamp("Carla Coordinadora","Coordinadora"),makeCorporateStamp("Mario Gerente","Gerente")]);
+ const files:Record<string,Uint8Array>={[originalPath]:originalBytes,"assets/coordinador.png":coordinatorAsset.bytes,"assets/gerente.png":managerAsset.bytes};
+ const db={storage:{from:()=>({download:async(path:string)=>files[path]?{data:new Blob([asArrayBuffer(files[path])]),error:null}:{data:null,error:new Error("missing")}})}} as unknown as SupabaseClient;
+ const coordinatorResult=await createSignedPdf(db,originalPath,[{tipo:"SELLO",pagina:1,x:.12,y:.68,ancho:.28,alto:.13,asset_path:"assets/coordinador.png"}],originalHash);const coordinatorPath="coordinador/documento/version.pdf";files[coordinatorPath]=coordinatorResult.bytes;
+ assert.notEqual(coordinatorPath,originalPath);assert.notEqual(coordinatorResult.hash,originalHash);assert.equal(sha256(files[coordinatorPath]),coordinatorResult.hash);
+ const document={archivo_original_path:originalPath,archivo_original_sha256:originalHash,archivo_coordinador_path:coordinatorPath,archivo_coordinador_sha256:coordinatorResult.hash,archivo_firmado_path:null,archivo_firmado_sha256:null};const managerBase=documentSigningBase(document);
+ assert.deepEqual(managerBase,{type:"coordinador",path:coordinatorPath,sha256:coordinatorResult.hash});assert.throws(()=>documentSigningBase({...document,archivo_coordinador_sha256:null}),/versión coordinador está incompleta/);assert.equal(resolveDocumentVersion(document,"base")?.path,coordinatorPath);assert.equal(resolveDocumentVersion(document,"coordinador")?.sha256,coordinatorResult.hash);
+ const receivedPdf=await PDFDocument.load(files[managerBase.path]);const xObjects=(pdf:PDFDocument)=>pdf.getPage(0).node.Resources()?.lookup(PDFName.of("XObject"),PDFDict)?.keys().length||0;assert.equal(xObjects(receivedPdf),1);
+ const managerPreview=await createSignedPdf(db,managerBase.path,[{tipo:"SELLO",pagina:1,x:.58,y:.68,ancho:.28,alto:.13,asset_path:"assets/gerente.png"}],managerBase.sha256);const finalPdf=await PDFDocument.load(managerPreview.bytes);
+ assert.equal(xObjects(finalPdf),2);const untouched=await PDFDocument.load(originalBytes);assert.equal(untouched.getPage(0).node.Resources()?.get(PDFName.of("XObject")),undefined);assert.equal(sha256(originalBytes),originalHash);
+ await assert.rejects(()=>createSignedPdf(db,coordinatorPath,[],originalHash),/hash registrado/);
 });
