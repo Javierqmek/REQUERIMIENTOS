@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { IDS } from "../fixtures/admin";
-const sizes = [[1440,900], [1366,768], [390,844], [375,812], [320,700]];
+import { responsiveViewports } from "./viewports";
+const sizes = responsiveViewports;
 for (const [width, height] of sizes) {
   test(`Administración responsive ${width}x${height}`, async ({ page }) => {
     await page.setViewportSize({ width, height });

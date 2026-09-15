@@ -9,7 +9,7 @@ const actor=(event:Event)=>(event.profiles as {nombre?:string}|null)?.nombre||"U
 const date=(value:string)=>new Intl.DateTimeFormat("es-PE",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
 
 function EventRow({event}:{event:Event}){
- return <li className="relative grid gap-0.5 border-l border-[#DCE3EC] pb-4 pl-5 last:pb-0"><span className="absolute -left-1 top-1 h-2 w-2 rounded-full bg-[#2563EB]"/><strong className="text-sm font-medium text-[#172033]">{labels[event.accion]||event.accion.replaceAll("_"," ").toLowerCase()}</strong><span className="text-xs text-[#607089]">{actor(event)} · {date(event.created_at)}</span>{event.comentario&&<p className="mt-1 text-sm text-[#45556D]">{event.comentario}</p>}</li>
+ return <li className="relative grid gap-0.5 border-l border-[#DCE3EC] pb-4 pl-5 last:pb-0"><span className="absolute -left-1 top-1 h-2 w-2 rounded-full bg-[#2563EB]"/><strong className="text-sm font-medium text-[#172033]">{labels[event.accion]||event.accion.split("_").join(" ").toLowerCase()}</strong><span className="text-xs text-[#607089]">{actor(event)} · {date(event.created_at)}</span>{event.comentario&&<p className="mt-1 text-sm text-[#45556D]">{event.comentario}</p>}</li>
 }
 export function DocumentHistory({events}:{events:Event[]}){
  const [expanded,setExpanded]=useState(false);

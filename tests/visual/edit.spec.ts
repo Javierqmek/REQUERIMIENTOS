@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { editGarments, fixtureEdit } from "../fixtures/edit";
+import { responsiveViewports } from "./viewports";
 const path = `/requerimientos/${fixtureEdit().requerimiento.id}/editar`;
-for (const [width,height] of [[1440,900],[1366,768],[390,844],[375,812],[320,700]]) test(`Edición responsive ${width}x${height}`, async ({ page }) => {
+for (const [width,height] of responsiveViewports) test(`Edición responsive ${width}x${height}`, async ({ page }) => {
   await page.setViewportSize({ width,height }); await page.goto(path);
   await expect(page.getByRole("heading", { name: "Datos del requerimiento" })).toBeVisible();
   await expect(page.getByText("Solo lectura", { exact: true })).toBeVisible();

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { editGarments } from "../fixtures/edit";
+import { responsiveViewports } from "./viewports";
 
 async function reachGarments(page: Page) {
   await page.goto("/requerimientos/nuevo");
@@ -9,7 +10,7 @@ async function reachGarments(page: Page) {
   await page.getByLabel("Unidad").selectOption({ label: "OFICINA REGISTRAL ATE" });
 }
 
-for (const [width,height] of [[1440,900],[1366,768],[390,844],[375,812],[320,700]]) test(`Nuevo requerimiento responsive ${width}x${height}`, async ({ page }) => {
+for (const [width,height] of responsiveViewports) test(`Nuevo requerimiento responsive ${width}x${height}`, async ({ page }) => {
   await page.setViewportSize({ width,height });
   await reachGarments(page);
   await expect(page.getByText("¿Para quién son las prendas?")).toBeVisible();

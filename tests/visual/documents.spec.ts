@@ -1,5 +1,6 @@
 import {test,expect} from "@playwright/test";
-const sizes:Array<[number,number]>=[[1440,900],[1366,768],[768,1024],[390,844],[375,812],[320,700]];
+import {responsiveViewports} from "./viewports";
+const sizes=responsiveViewports;
 for(const [width,height] of sizes)test(`Documentos responsive ${width}x${height}`,async({page})=>{await page.setViewportSize({width,height});await page.goto("/documentos");await expect(page.getByText("MARÍA DE LOS ÁNGELES FERNÁNDEZ")).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)});
 for(const [width,height] of sizes)test(`Nuevo documento responsive ${width}x${height}`,async({page})=>{await page.setViewportSize({width,height});await page.goto("/documentos/nuevo");await expect(page.getByLabel("Tipo")).toBeVisible();await expect(page.getByLabel("Gerente firmante")).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)});
 for(const [width,height] of sizes)test(`Firma y sello responsive ${width}x${height}`,async({page})=>{await page.setViewportSize({width,height});await page.goto("/perfil/firma");await expect(page.getByText("Firma manuscrita")).toBeVisible();await expect(page.getByText("Vista previa del sello")).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)});

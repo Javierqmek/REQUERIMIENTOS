@@ -1,6 +1,7 @@
 import {test,expect} from "@playwright/test";
+import {responsiveViewports} from "./viewports";
 
-for(const [width,height] of [[1440,900],[1366,768],[390,844],[375,812],[320,700]])test(`Mantenimiento responsive ${width}x${height}`,async({page})=>{
+for(const [width,height] of responsiveViewports)test(`Mantenimiento responsive ${width}x${height}`,async({page})=>{
   await page.setViewportSize({width,height});await page.goto("/admin/mantenimiento");
   await expect(page.getByRole("heading",{name:"Mantenimiento"})).toBeVisible();await expect(page.getByRole("tab",{name:"Clientes"})).toHaveAttribute("aria-selected","true");
   await expect(page.getByText("RENIEC",{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

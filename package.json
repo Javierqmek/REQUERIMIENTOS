@@ -2,6 +2,21 @@
   "name": "requerimientos-uniformes",
   "version": "0.1.0",
   "private": true,
+  "browserslist": {
+    "production": [
+      "Chrome >= 109",
+      "Edge >= 109",
+      "Firefox >= 115",
+      "Safari >= 15.6",
+      "ios_saf >= 15.6",
+      "and_chr >= 109"
+    ],
+    "development": [
+      "last 1 Chrome version",
+      "last 1 Firefox version",
+      "last 1 Safari version"
+    ]
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",

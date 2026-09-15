@@ -22,7 +22,7 @@ const options: AdminOptions = {
   unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE" }, { id: "66000000-0000-4000-8000-000000000002", cliente_id: "55000000-0000-4000-8000-000000000002", nombre: "SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA" }],
   coordinadores: [{ id: IDS.coordinador, nombre: "Javier Quispe", email: "qa@example.test" }],
 };
-const records = Array.from({ length: 62 }, (_, index) => {
+const initialRecords = Array.from({ length: 62 }, (_, index) => {
   const other = index % 3 === 1;
   return fixtureRequirement({
     id: "44000000-0000-4000-8000-" + String(index + 1).padStart(12, "0"),
@@ -32,23 +32,28 @@ const records = Array.from({ length: 62 }, (_, index) => {
     estado: (["Pendiente", "Atendido", "Observado"] as Estado[])[index % 3],
   });
 });
-const catalogRows = {
+const initialCatalogRows = {
   clientes: options.clientes.map((row,index)=>({...row,activo:index===0})),
   unidades: options.unidades.map((row,index)=>({...row,clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
   prendas: editGarments.map((row,index)=>({...row,activo:index!==1})),
 };
+const recordsByProject=new Map<string,typeof initialRecords>();
+function recordsFor(project:string){let rows=recordsByProject.get(project);if(!rows){rows=initialRecords.map(row=>({...row}));recordsByProject.set(project,rows)}return rows}
+type CatalogRows=typeof initialCatalogRows;
+const catalogRowsByProject=new Map<string,CatalogRows>();
+function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row}))};catalogRowsByProject.set(project,rows)}return rows}
 let catalogSequence=100;
 function catalogId(){catalogSequence++;return "99000000-0000-4000-8000-"+String(catalogSequence).padStart(12,"0")}
-function filtered(filters: AdminFilters) {
+function filtered(filters: AdminFilters,records=initialRecords) {
   if (filters.q === "sesion") return [fixtureRequirement()];
   if (filters.q === "incompleto") return [fixtureRequirement({ unidades: null })];
   return records.filter(row => (!filters.cliente || row.cliente_id === filters.cliente) && (!filters.unidad || row.unidad_id === filters.unidad) &&
     (!filters.coordinador || row.usuario_creador_id === filters.coordinador) && (!filters.estado || row.estado === filters.estado) &&
     (!filters.q || [row.personal?.nombre, row.personal?.dni, row.clientes?.nombre, row.unidades?.nombre, row.profiles?.nombre].join(" ").toLowerCase().includes(filters.q.toLowerCase())));
 }
-function pageData(filters: AdminFilters, page: number) {
-  const rows = filtered(filters);
+function pageData(filters: AdminFilters, page: number,records=initialRecords) {
+  const rows = filtered(filters,records);
   return { total: rows.length, page, pageSize: 50, rows: rows.slice((page - 1) * 50, page * 50).map(row => {
     const { detalle_requerimiento, ...compact } = row; void detalle_requerimiento; return compact;
   }) };
@@ -57,10 +62,10 @@ async function* groups(rows: SidigeRequirement[]) { yield* rows; }
 async function main() {
   const testPdf=await PDFDocument.create();testPdf.addPage([595,842]);testPdf.addPage([595,842]);testPdf.addPage([595,842]);const testPdfBytes=await testPdf.save();const testStamp=await makeCorporateStamp("Gerente Seguroc","Gerente");
   const js = await build({
-    entryPoints: ["tests/visual/entry.tsx"], bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic",
+    entryPoints: ["tests/visual/entry.tsx"], bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", target: ["chrome109","edge109","firefox115","safari15.6"],
     plugins: [{ name: "isolated-test-adapters", setup(builder) {
       builder.onResolve({ filter: /^next\/(link|navigation|image)$/ }, args => ({ path: args.path, namespace: "test-adapter" }));
-      builder.onResolve({ filter: /^pdfjs-dist$/ }, () => ({ path: "pdfjs-dist", namespace: "test-adapter" }));
+      builder.onResolve({ filter: /^pdfjs-dist(?:\/legacy\/build\/pdf\.mjs)?$/ }, () => ({ path: "pdfjs-dist", namespace: "test-adapter" }));
       builder.onResolve({ filter: /lib\/supabase\/client$/ }, () => ({ path: "supabase", namespace: "test-adapter" }));
       builder.onLoad({ filter: /.*/, namespace: "test-adapter" }, args => ({
         contents: args.path === "pdfjs-dist" ? 'export const GlobalWorkerOptions={workerSrc:"/test-worker.mjs"};export const getDocument=()=>({promise:Promise.resolve({getPage:async()=>({getViewport:({scale})=>({width:595*scale,height:842*scale}),render:()=>({promise:Promise.resolve()})})})});' :
@@ -80,6 +85,7 @@ async function main() {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1:3099");
+      const project=String(req.headers["x-qa-project"]||"default"),records=recordsFor(project),catalogRows=catalogsFor(project);
       const sendJson = (value: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
       if (url.pathname === "/test.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); res.end(js.outputFiles[0].text); return; }
       if (url.pathname === "/test.css") { res.writeHead(200, { "Content-Type": "text/css" }); res.end(css.css); return; }
@@ -135,16 +141,16 @@ async function main() {
         if (filters.q === "error") { sendJson({ error: "Error simulado de consulta. Intenta nuevamente." }, 500); return; }
         if (url.pathname.endsWith("/sidige")) {
           try {
-            const bytes = await buildSidigeWorkbook(groups(filtered(filters)));
+            const bytes = await buildSidigeWorkbook(groups(filtered(filters,records)));
             res.writeHead(200, { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="' + sidigeFilename() + '"' }); res.end(bytes);
           } catch (error) {
             sendJson(error instanceof SidigeValidationError ? { error: error.message, issues: error.issues, totalIncomplete: error.total } : { error: "No hay requerimientos para exportar con los filtros seleccionados." }, 422);
           }
           return;
         }
-        sendJson(pageData(filters, page)); return;
+        sendJson(pageData(filters, page,records)); return;
       }
-      const fixture = { initial: pageData(filters, page), options, initialFilters: { ...EMPTY_FILTERS, ...filters } };
+      const fixture = { initial: pageData(filters, page,records), options, initialFilters: { ...EMPTY_FILTERS, ...filters } };
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end('<!doctype html><html lang="es"><head><meta name="viewport" content="width=device-width, initial-scale=1"/><title>QA Administración · Datos ficticios</title><link rel="stylesheet" href="/test.css"/></head><body><div id="root"></div><script>window.__ADMIN_FIXTURE__=' + JSON.stringify(fixture).replaceAll("<", "\\u003c") + '</script><script src="/test.js"></script></body></html>');
     } catch { res.writeHead(500); res.end("Error en servidor de pruebas"); }
