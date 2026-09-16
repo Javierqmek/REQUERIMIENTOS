@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ATTENDED_MESSAGE, canEditRequirement, initialEditLines, newEditLine, type EditPayload } from "@/lib/requirements/edit";
@@ -18,6 +19,7 @@ import { catalogTotal, formatMoney } from "@/lib/requirements/money";
 
 export function EditRequirement({ initial, profile }: { initial: EditPayload; profile: Profile }) {
   const row = initial.requerimiento;
+  const router = useRouter();
   const allowed = canEditRequirement(profile, row);
   const db = useMemo(() => createClient(), []);
   const [lines, setLines] = useState(() => initialEditLines(row));
@@ -62,7 +64,10 @@ export function EditRequirement({ initial, profile }: { initial: EditPayload; pr
       if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("Tu sesión pudo haber caducado. Vuelve a iniciar sesión antes de guardar.");
       const result = await response.json();
       if (!response.ok) { if (response.status === 409) setConflict(true); throw new Error(result.error || "No pudimos guardar los cambios."); }
+      if (!result.data?.requerimiento || result.data.requerimiento.id !== row.id) throw new Error("No pudimos confirmar los datos persistidos. Recarga el requerimiento.");
       setSuccess(true);
+      router.replace(`/requerimientos/${row.id}`);
+      router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos guardar los cambios. Intenta nuevamente."); }
     finally { savingRef.current = false; setSaving(false); }
   }

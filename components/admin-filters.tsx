@@ -24,6 +24,10 @@ export function AdminFiltersForm({ value, options, disabled, dirty, onChange, on
         <div className="min-w-0 flex-1"><label className="label" htmlFor="admin-busqueda">Buscar en todos los requerimientos</label><div className="relative"><Search aria-hidden="true" size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"/><input id="admin-busqueda" className="input !pl-10" value={value.q} maxLength={120} placeholder="Agente, DNI, cliente o coordinador" onChange={e => change("q", e.target.value)}/></div></div>
         <div className="flex flex-wrap gap-2"><button type="button" className="btn btn-ghost flex-1 sm:flex-none" onClick={onClear}><RotateCcw size={16}/>Limpiar filtros</button><button className="btn btn-secondary flex-1 sm:flex-none" type="submit">Aplicar filtros</button></div>
       </div>
+      <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-[var(--border)] px-3 text-sm">
+        <input type="checkbox" checked={value.duplicados === "1"} onChange={e => change("duplicados", e.target.checked ? "1" : "")}/>
+        <span><strong className="font-medium">Solo posibles duplicados</strong><span className="ml-1 text-xs text-[var(--text-secondary)]">Mismo agente, destino y coordinador dentro de 24 horas.</span></span>
+      </label>
       <p className="mt-2 text-xs text-[var(--text-secondary)]">{dirty ? "Hay cambios sin aplicar. Aplica los filtros antes de exportar." : "Fechas según hora de Perú. La exportación incluye todos los resultados filtrados."}</p>
     </fieldset>
   </form>;

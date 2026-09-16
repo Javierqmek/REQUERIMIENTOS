@@ -13,10 +13,12 @@ import { useActiveCatalog } from "@/components/use-active-catalog";
 import { genderLabel, isGenderCompatible, type GenderChoice } from "@/lib/garments/gender";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
 import type { Cliente, Personal, Prenda, Unidad } from "@/lib/types";
+import { createRequestId } from "@/lib/security/request-id";
 
 export default function NewRequirement() {
   const supabase = useMemo(() => createClient(), []);
   const savingRef = useRef(false);
+  const [requestId,setRequestId] = useState(createRequestId);
   const [step, setStep] = useState<1 | 2>(1);
   const [query, setQuery] = useState("");
   const [agents, setAgents] = useState<Personal[]>([]);
@@ -67,6 +69,7 @@ export default function NewRequirement() {
   }
   function reset() {
     if (savingRef.current) return;
+    setRequestId(createRequestId());
     clearDestination(); setAgent(null); setStep(1); setSuccessId(""); setQuery(""); setAgents([]); setSearching(false);
   }
   function choose(a: Personal) {
@@ -107,6 +110,7 @@ export default function NewRequirement() {
         p_cliente_id: parsed.data.cliente_id,
         p_unidad_id: parsed.data.unidad_id,
         p_detalles: parsed.data.detalles,
+        p_request_id: requestId,
       });
       if (saveError || !data) throw saveError ?? new Error("Sin identificador");
       setSuccessId(String(data));

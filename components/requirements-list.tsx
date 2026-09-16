@@ -37,6 +37,7 @@ export function RequirementsList({ rows: initial }: { rows: Requerimiento[] }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold text-[#172033]">{row.personal?.nombre}</h2><StatusBadge estado={row.estado}/></div>
           <p className="mt-0.5 text-xs text-[#607089]">{row.clientes?.nombre ?? LEGACY_CLIENT} · {row.unidades?.nombre ?? LEGACY_UNIT}</p>
+          <p className="mt-1 text-xs font-medium text-[#607089]">{row.cantidad_prendas ?? 0} prendas · {row.unidades_totales ?? 0} unidades</p>
           <p className="mt-1 text-xs text-[#8794A8]">{new Intl.DateTimeFormat("es-PE", { dateStyle:"medium", timeStyle:"short" }).format(new Date(row.fecha))}</p>
         </div>
         <div className="shrink-0 text-right">

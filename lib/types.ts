@@ -19,6 +19,8 @@ export interface Detalle {
 export interface Requerimiento {
   id: string; fecha: string; referencia_interna: string; estado: Estado; usuario_creador_id: string;
   total_requerimiento?: number | string;
+  cantidad_prendas?: number;
+  unidades_totales?: number;
   cliente_id: string | null; unidad_id: string | null;
   clientes: Pick<Cliente, "nombre"> | null;
   unidades: Pick<Unidad, "nombre"> | null;

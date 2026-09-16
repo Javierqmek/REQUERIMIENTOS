@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fixtureRequirement, IDS } from "./fixtures/admin";
 import { cleanText, SIDIGE_HEADERS, SidigeValidationError, toSidigeRows } from "../lib/admin/sidige";
 import { buildSidigeWorkbook, EmptyExportError, sidigeFilename } from "../lib/admin/workbook";
-import { EMPTY_FILTERS, filterParams, filterRpcArgs, parseAdminQuery } from "../lib/admin/filters";
+import { EMPTY_FILTERS, filterParams, filterRpcArgs, nextSort, parseAdminQuery } from "../lib/admin/filters";
 import { makeAdminListHandler, makeAdminUpdateHandler, makeSidigeHandler } from "../lib/admin/handlers";
 import { exportRequirements } from "../lib/admin/data";
 import type { SidigeRequirement } from "../lib/admin/types";
@@ -18,7 +18,7 @@ function mockDb(rows: SidigeRequirement[]) {
   const db = {
     rpc: (_name: string, args: Record<string, unknown>) => {
       calls.push(args);
-      const result = Promise.resolve({ data: { rows, total: rows.length }, error: null });
+      const result = Promise.resolve({ data: { rows, total: rows.length, duplicate_total: 0, duplicate_groups: 0 }, error: null });
       return Object.assign(result, { abortSignal: () => result });
     },
   } as unknown as SupabaseClient;
@@ -123,7 +123,18 @@ for (const key of ["cliente", "unidad", "coordinador"] as const) test("filtro po
 test("filtros combinados y fechas inclusivas en Perú", () => {
   const filters = { ...EMPTY_FILTERS, cliente: IDS.cliente, unidad: IDS.unidad, coordinador: IDS.coordinador, estado: "Pendiente" as const, desde: "2026-09-01", hasta: "2026-09-02", q: "Ramírez" };
   assert.deepEqual(parseAdminQuery(filterParams(filters, 2)), { filters, page: 2 });
-  assert.deepEqual(filterRpcArgs(filters), { p_cliente_id: IDS.cliente, p_unidad_id: IDS.unidad, p_coordinador_id: IDS.coordinador, p_estado: "Pendiente", p_desde: "2026-09-01T00:00:00-05:00", p_hasta: "2026-09-03T05:00:00.000Z", p_busqueda: "Ramírez" });
+  assert.deepEqual(filterRpcArgs(filters), { p_cliente_id: IDS.cliente, p_unidad_id: IDS.unidad, p_coordinador_id: IDS.coordinador, p_estado: "Pendiente", p_desde: "2026-09-01T00:00:00-05:00", p_hasta: "2026-09-03T05:00:00.000Z", p_busqueda: "Ramírez", p_solo_duplicados: false, p_orden: "fecha", p_direccion: "desc" });
+});
+test("ordenamiento alterna ascendente, descendente y sin ordenar conservando filtros", () => {
+  const base={...EMPTY_FILTERS,cliente:IDS.cliente,q:"Ramírez"};
+  const asc=nextSort(base,"agente");assert.equal(asc.orden,"agente");assert.equal(asc.direccion,"asc");assert.equal(asc.cliente,IDS.cliente);assert.equal(asc.q,"Ramírez");
+  const desc=nextSort(asc,"agente");assert.equal(desc.direccion,"desc");
+  const none=nextSort(desc,"agente");assert.equal(none.orden,"");assert.equal(none.direccion,"");assert.equal(none.cliente,IDS.cliente);
+});
+test("filtro de duplicados y orden llegan tipados a la RPC", () => {
+  const filters={...EMPTY_FILTERS,duplicados:"1" as const,orden:"total" as const,direccion:"asc" as const};
+  assert.deepEqual(parseAdminQuery(filterParams(filters)).filters,filters);
+  const args=filterRpcArgs(filters);assert.equal(args.p_solo_duplicados,true);assert.equal(args.p_orden,"total");assert.equal(args.p_direccion,"asc");
 });
 for (const query of ["desde=2026-02-30", "desde=2026-09-03&hasta=2026-09-02", "cliente=no-uuid", "estado=Otro", "page=-1"]) test("filtros inválidos: " + query, () => {
   assert.throws(() => parseAdminQuery(new URLSearchParams(query)));

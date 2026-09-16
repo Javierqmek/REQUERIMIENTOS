@@ -54,7 +54,7 @@ function filtered(filters: AdminFilters,records=initialRecords) {
 }
 function pageData(filters: AdminFilters, page: number,records=initialRecords) {
   const rows = filtered(filters,records);
-  return { total: rows.length, page, pageSize: 50, rows: rows.slice((page - 1) * 50, page * 50).map(row => {
+  return { total: rows.length, duplicateTotal: 0, duplicateGroups: 0, page, pageSize: 50, rows: rows.slice((page - 1) * 50, page * 50).map(row => {
     const { detalle_requerimiento, ...compact } = row; void detalle_requerimiento; return compact;
   }) };
 }

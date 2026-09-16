@@ -29,6 +29,7 @@ insert into prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente
 ('33000000-0000-4000-8000-000000000005','EDIT-E','INACTIVA','MASTER E',103,'EDIT A',1,false);
 insert into requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id) values
 ('43000000-0000-4000-8000-000000000001','23000000-0000-4000-8000-000000000001','13000000-0000-4000-8000-000000000001','53000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001');
+select set_config('qa.header_count',(select count(*)::text from requerimientos),true);
 insert into detalle_requerimiento(id,requerimiento_id,prenda_id,cantidad,precio_unitario,codigo_almacen) values
 ('73000000-0000-4000-8000-000000000001','43000000-0000-4000-8000-000000000001','33000000-0000-4000-8000-000000000001',2,10,'HIST A'),
 ('73000000-0000-4000-8000-000000000002','43000000-0000-4000-8000-000000000001','33000000-0000-4000-8000-000000000002',3,20,'HIST B');
@@ -55,6 +56,7 @@ select pg_temp.denied_edit($q$update detalle_requerimiento set cantidad=99 where
 select pg_temp.denied_edit($q$delete from detalle_requerimiento where requerimiento_id=current_setting('qa.req')::uuid$q$,'42501');
 select pg_temp.save_lines('[{"prenda_id":"33000000-0000-4000-8000-000000000001","detalle_id":"73000000-0000-4000-8000-000000000001"},{"prenda_id":"33000000-0000-4000-8000-000000000003"}]') is not null;
 select pg_temp.check_edit((select count(*)=2 and sum(cantidad)=12 from detalle_requerimiento where requerimiento_id=current_setting('qa.req')::uuid),'owner adds removes replaces; only active lines visible and counted');
+select pg_temp.check_edit((select count(*)=current_setting('qa.header_count')::integer from requerimientos),'first edit creates no requirement header');
 select pg_temp.check_edit((select precio_unitario=10 and codigo_almacen='HIST A' and cantidad=5 from detalle_requerimiento where id='73000000-0000-4000-8000-000000000001'),'kept price/code historical, quantity from master');
 select pg_temp.check_edit((select precio_unitario=101 and codigo_almacen='MASTER C' and cantidad=7 from detalle_requerimiento where requerimiento_id=current_setting('qa.req')::uuid and prenda_id='33000000-0000-4000-8000-000000000003'),'new line current master');
 select pg_temp.check_edit((select count(*)=0 from detalle_requerimiento where not activo),'history invisible to coordinator');
@@ -68,6 +70,7 @@ select pg_temp.denied_edit($q$select pg_temp.save_lines('[{"prenda_id":"33000000
 select pg_temp.denied_edit($q$select pg_temp.save_lines('[{"prenda_id":"33000000-0000-4000-8000-000000000002","detalle_id":"73000000-0000-4000-8000-000000000002"}]')$q$,'22023');
 select pg_temp.check_edit((select count(*)=2 and sum(cantidad)=12 from detalle_requerimiento where requerimiento_id=current_setting('qa.req')::uuid),'invalid edits leave active set unchanged');
 select pg_temp.save_lines(pg_temp.keep_lines() || '[{"prenda_id":"33000000-0000-4000-8000-000000000002"}]') is not null;
+select pg_temp.check_edit((select count(*)=current_setting('qa.header_count')::integer from requerimientos),'second edit creates no requirement header');
 select pg_temp.check_edit((select id<>'73000000-0000-4000-8000-000000000002' and precio_unitario=100 and codigo_almacen='MASTER B' and cantidad=6 from detalle_requerimiento where requerimiento_id=current_setting('qa.req')::uuid and prenda_id='33000000-0000-4000-8000-000000000002'),'readding creates fresh line with master values');
 -- Remove/readd within the same save is also a new active identity.
 select pg_temp.save_lines((select jsonb_agg(x - 'detalle_id') from jsonb_array_elements(pg_temp.keep_lines()) x)) is not null;
@@ -79,9 +82,10 @@ set local role authenticated;
 select pg_temp.denied_edit($q$select editar_prendas_requerimiento(current_setting('qa.req')::uuid,current_setting('qa.master_version'),pg_temp.keep_lines())$q$,'40001');
 select set_config('request.jwt.claim.sub','13000000-0000-4000-8000-000000000003',true);
 select pg_temp.check_edit((select count(*)=0 from detalle_requerimiento where not activo),'history also excluded from normal admin reads');
-select pg_temp.check_edit((admin_consultar_requerimientos(p_cliente_id=>'53000000-0000-4000-8000-000000000001')#>>'{rows,0,cantidad_prendas}')::int=18,'admin totals exclude retired lines');
-select pg_temp.check_edit(jsonb_array_length(admin_consultar_requerimientos(p_cliente_id=>'53000000-0000-4000-8000-000000000001',p_exportar=>true)#>'{rows,0,detalle_requerimiento}')=3,'CSV and SIDIGE source only active lines');
-select pg_temp.check_edit((select sum((x->>'cantidad')::int * (x->>'precio_unitario')::numeric)=1802 from jsonb_array_elements(admin_consultar_requerimientos(p_cliente_id=>'53000000-0000-4000-8000-000000000001',p_exportar=>true)#>'{rows,0,detalle_requerimiento}') x),'monetary total only active lines');
+select pg_temp.check_edit((admin_consultar_requerimientos_v2(p_cliente_id=>'53000000-0000-4000-8000-000000000001')#>>'{rows,0,cantidad_prendas}')::int=3,'admin and coordinator use active line count');
+select pg_temp.check_edit((admin_consultar_requerimientos_v2(p_cliente_id=>'53000000-0000-4000-8000-000000000001')#>>'{rows,0,unidades_totales}')::int=18,'admin exposes units separately');
+select pg_temp.check_edit(jsonb_array_length(admin_consultar_requerimientos_v2(p_cliente_id=>'53000000-0000-4000-8000-000000000001',p_exportar=>true)#>'{rows,0,detalle_requerimiento}')=3,'CSV and SIDIGE source only active lines');
+select pg_temp.check_edit((select sum((x->>'cantidad')::int * (x->>'precio_unitario')::numeric)=1802 from jsonb_array_elements(admin_consultar_requerimientos_v2(p_cliente_id=>'53000000-0000-4000-8000-000000000001',p_exportar=>true)#>'{rows,0,detalle_requerimiento}') x),'monetary total only active lines');
 select pg_temp.save_lines(pg_temp.keep_lines()) is not null;
 select pg_temp.denied_edit($q$update requerimientos set fecha=now() where id=current_setting('qa.req')::uuid$q$,'42501');
 update requerimientos set estado='Observado' where id=current_setting('qa.req')::uuid;

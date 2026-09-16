@@ -29,7 +29,7 @@ export function makeEditGarmentsHandler(deps: Dependencies) {
         if (["22023", "22P02", "23505"].includes(code)) return json({ error: "Revisa las prendas: no deben duplicarse y deben corresponder al cliente." }, 400);
         return json({ error: "No pudimos guardar los cambios. Intenta nuevamente." }, 500);
       }
-      return json({ message: "Prendas actualizadas correctamente." });
+      return json({ message: "Prendas actualizadas correctamente.", data: result.data });
     } catch (error) {
       if (error instanceof HttpInputError) return json({ error: error.message }, error.status);
       return json({ error: error instanceof z.ZodError || error instanceof SyntaxError ? "Datos inválidos. Envía únicamente las prendas, sin modificar la cabecera." : "No pudimos guardar los cambios. Intenta nuevamente." }, error instanceof z.ZodError || error instanceof SyntaxError ? 400 : 500);

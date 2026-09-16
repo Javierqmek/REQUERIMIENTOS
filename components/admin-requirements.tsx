@@ -7,7 +7,7 @@ import { AdminResults } from "@/components/admin-results";
 import { Alert } from "@/components/ui/alert";
 import { Toast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { adminFiltersSchema, EMPTY_FILTERS, filterParams, type AdminFilters } from "@/lib/admin/filters";
+import { adminFiltersSchema, EMPTY_FILTERS, filterParams, nextSort, type AdminFilters, type AdminSortField } from "@/lib/admin/filters";
 import type { AdminOptions, AdminResult } from "@/lib/admin/types";
 import type { IncompleteRequirement } from "@/lib/admin/sidige";
 import type { Estado } from "@/lib/types";
@@ -113,7 +113,7 @@ export function AdminRequirements({ initial, options, initialFilters = EMPTY_FIL
   async function remove(){if(!deleteIds.length||deleting)return;setDeleting(true);setNotice(null);try{const response=await fetch("/api/admin/requerimientos/eliminar",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:deleteIds})});const payload=await readJson(response);if(!response.ok)throw new Error(payload.error||"No se pudieron eliminar los requerimientos.");const count=Number(payload.eliminados);setDeleteIds([]);setSelected(new Set());setToast(count===1?"Requerimiento eliminado correctamente":`${count} requerimientos eliminados correctamente`);await load(applied,result.page);}catch(error){setNotice({kind:"error",text:error instanceof Error?error.message:"No se pudieron eliminar los requerimientos."});}finally{setDeleting(false)}}
   function select(id:string,checked:boolean){setSelected(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next})}
   const disabled = Boolean(exporting || busy || deleting);
-  const activeCount = Object.values(applied).filter(Boolean).length;
+  const activeCount = [applied.cliente,applied.unidad,applied.coordinador,applied.estado,applied.desde,applied.hasta,applied.q,applied.duplicados].filter(Boolean).length;
   return <section className="min-w-0">
     <header className="page-header flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div><p className="page-eyebrow">Administración</p><h1 className="page-title">Requerimientos</h1><p className="page-description">Consulta solicitudes, actualiza estados y prepara la importación SIDIGE.</p></div>
@@ -133,7 +133,7 @@ export function AdminRequirements({ initial, options, initialFilters = EMPTY_FIL
       {notice.kind === "error" && !notice.issues && <button onClick={() => { setNotice(null); void load(applied, result.page); }} disabled={loading || disabled} className="mt-2 underline underline-offset-2">Volver a consultar</button>}
     </Alert></div>}
     {allowDeletion&&selected.size>0&&<div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#F1C3C3] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm"><strong>{selected.size}</strong> {selected.size===1?"requerimiento seleccionado":"requerimientos seleccionados"}</p><button className="btn btn-danger" disabled={disabled||loading} onClick={()=>setDeleteIds([...selected])}><Trash2 size={17}/>Eliminar seleccionados</button></div>}
-    <AdminResults result={result} loading={loading} busy={busy} disabled={disabled} deletionEnabled={allowDeletion} selected={selected} onSelect={select} onDelete={id=>setDeleteIds([id])} onUpdate={update} onPage={page => { setNotice(null); void load(applied, page); }}/>
+    <AdminResults result={result} filters={applied} loading={loading} busy={busy} disabled={disabled} deletionEnabled={allowDeletion} selected={selected} onSelect={select} onDelete={id=>setDeleteIds([id])} onUpdate={update} onSort={(field:AdminSortField)=>{const next=nextSort(applied,field);setDraft(next);void load(next,1)}} onPage={page => { setNotice(null); void load(applied, page); }}/>
     <Toast message={toast} onClose={closeToast}/>
     <ConfirmDialog open={deleteIds.length>0} busy={deleting} intent="danger" context="delete" title={deleteIds.length===1?"¿Eliminar este requerimiento de prueba?":`¿Eliminar ${deleteIds.length} requerimientos de prueba?`} description={deleteIds.length===1?"Vas a eliminar permanentemente este requerimiento y todas sus prendas asociadas. Esta acción no se puede deshacer. Úsala solo para registros de prueba. ¿Deseas continuar?":`Se eliminarán permanentemente ${deleteIds.length} requerimientos de prueba y todas sus prendas asociadas. Esta acción no se puede deshacer. ¿Deseas continuar?`} confirmLabel={deleting?"Eliminando...":"Sí, eliminar permanentemente"} onCancel={()=>setDeleteIds([])} onConfirm={()=>void remove()}/>
   </section>;

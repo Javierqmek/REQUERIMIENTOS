@@ -1,7 +1,12 @@
 import type { Requerimiento } from "@/lib/types";
 
-export type AdminRow = Requerimiento & { usuario_creador_id: string; cantidad_prendas: number; total_requerimiento: number | string };
-export type AdminResult = { rows: AdminRow[]; total: number; page: number; pageSize: number };
+export type AdminRow = Requerimiento & {
+  usuario_creador_id: string; cantidad_prendas: number; unidades_totales: number;
+  total_requerimiento: number | string; posible_duplicado: boolean;
+  grupo_duplicado_id: string | null; grupo_duplicado_tamano: number;
+  potencialmente_incompleto: boolean;
+};
+export type AdminResult = { rows: AdminRow[]; total: number; duplicateTotal: number; duplicateGroups: number; page: number; pageSize: number };
 export type AdminOptions = {
   clientes: { id: string; nombre: string }[];
   unidades: { id: string; cliente_id: string; nombre: string }[];

@@ -99,7 +99,19 @@ test("API admin edita ajeno con contrato sin cabecera", async () => {
   const h = mockHandler({ ...editProfile, role: "admin" }, "Observado", undefined, true);
   const response = await h.run(request(), fixtureEdit().requerimiento.id);
   assert.equal(response.status, 200); assert.deepEqual(h.calls[1].args, { p_id: fixtureEdit().requerimiento.id, p_version: body().version, p_detalles: body().detalles });
-  assert.equal((await response.json()).message, "Prendas actualizadas correctamente.");
+  const payload=await response.json();assert.equal(payload.message, "Prendas actualizadas correctamente.");assert.equal(payload.data.requerimiento.id,fixtureEdit().requerimiento.id);
+});
+test("dos ediciones consecutivas conservan la misma cabecera y nunca llaman crear_requerimiento", async () => {
+  const h=mockHandler();const id=fixtureEdit().requerimiento.id;
+  for(let attempt=0;attempt<2;attempt++){
+    const response=await h.run(request(),id);assert.equal(response.status,200);
+    const payload=await response.json();assert.equal(payload.data.requerimiento.id,id);
+  }
+  assert.deepEqual(h.calls.map(call=>call.name),[
+    "obtener_edicion_prendas","editar_prendas_requerimiento",
+    "obtener_edicion_prendas","editar_prendas_requerimiento",
+  ]);
+  assert.equal(h.calls.some(call=>call.name==="crear_requerimiento"),false);
 });
 for (const [code, status] of [["40001",409],["55000",409],["42501",403],["22023",400],["XX000",500]] as const) test(`API maneja error SQL ${code}`, async () => {
   const h = mockHandler(editProfile, "Pendiente", code); assert.equal((await h.run(request(), fixtureEdit().requerimiento.id)).status, status);
