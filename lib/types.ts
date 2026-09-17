@@ -21,6 +21,7 @@ export interface Requerimiento {
   total_requerimiento?: number | string;
   cantidad_prendas?: number;
   unidades_totales?: number;
+  generos?: import("@/lib/garments/gender").GarmentGender[];
   cliente_id: string | null; unidad_id: string | null;
   clientes: Pick<Cliente, "nombre"> | null;
   unidades: Pick<Unidad, "nombre"> | null;

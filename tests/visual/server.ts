@@ -13,6 +13,7 @@ import { SidigeValidationError } from "../../lib/admin/sidige";
 import type { AdminFilters } from "../../lib/admin/filters";
 import type { AdminOptions, SidigeRequirement } from "../../lib/admin/types";
 import type { Estado } from "../../lib/types";
+import { parseRequirementQuery, type RequirementFilters } from "../../lib/requirements/list-filters";
 import { editGarments } from "../fixtures/edit";
 import { PDFDocument } from "pdf-lib";
 import { makeCorporateStamp } from "../../lib/documents/security";
@@ -30,6 +31,8 @@ const initialRecords = Array.from({ length: 62 }, (_, index) => {
     clientes: { nombre: options.clientes[other ? 1 : 0].nombre }, unidades: { nombre: options.unidades[other ? 1 : 0].nombre },
     personal: { cargo: "AGENTE", nombre: index === 0 ? "RAMÍREZ RIVERA JERY" : index === 1 ? "MARÍA DE LOS ÁNGELES FERNÁNDEZ DEL CASTILLO" : "AGENTE OPERATIVO " + (index + 1), dni: "071389725" },
     estado: (["Pendiente", "Atendido", "Observado"] as Estado[])[index % 3],
+    cantidad_prendas: index % 4 + 1, unidades_totales: index % 4 + 3,
+    generos: [["HOMBRE"],["MUJER"],["AMBOS"]][index % 3] as ("HOMBRE"|"MUJER"|"AMBOS")[],
   });
 });
 const initialCatalogRows = {
@@ -45,14 +48,18 @@ const catalogRowsByProject=new Map<string,CatalogRows>();
 function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row}))};catalogRowsByProject.set(project,rows)}return rows}
 let catalogSequence=100;
 function catalogId(){catalogSequence++;return "99000000-0000-4000-8000-"+String(catalogSequence).padStart(12,"0")}
-function filtered(filters: AdminFilters,records=initialRecords) {
+type VisualFilters = Partial<AdminFilters & RequirementFilters>;
+function filtered(filters: VisualFilters,records=initialRecords) {
   if (filters.q === "sesion") return [fixtureRequirement()];
   if (filters.q === "incompleto") return [fixtureRequirement({ unidades: null })];
   return records.filter(row => (!filters.cliente || row.cliente_id === filters.cliente) && (!filters.unidad || row.unidad_id === filters.unidad) &&
     (!filters.coordinador || row.usuario_creador_id === filters.coordinador) && (!filters.estado || row.estado === filters.estado) &&
+    (!filters.genero || (filters.genero==="AMBOS"?row.generos?.includes("AMBOS"):row.generos?.some(value=>value===filters.genero||value==="AMBOS"))) &&
+    (!filters.prendasMin || row.cantidad_prendas>=Number(filters.prendasMin)) && (!filters.prendasMax || row.cantidad_prendas<=Number(filters.prendasMax)) &&
+    (!filters.unidadesMin || row.unidades_totales>=Number(filters.unidadesMin)) && (!filters.unidadesMax || row.unidades_totales<=Number(filters.unidadesMax)) &&
     (!filters.q || [row.personal?.nombre, row.personal?.dni, row.clientes?.nombre, row.unidades?.nombre, row.profiles?.nombre].join(" ").toLowerCase().includes(filters.q.toLowerCase())));
 }
-function pageData(filters: AdminFilters, page: number,records=initialRecords) {
+function pageData(filters: VisualFilters, page: number,records=initialRecords) {
   const rows = filtered(filters,records);
   return { total: rows.length, duplicateTotal: 0, duplicateGroups: 0, page, pageSize: 50, rows: rows.slice((page - 1) * 50, page * 50).map(row => {
     const { detalle_requerimiento, ...compact } = row; void detalle_requerimiento; return compact;
@@ -128,11 +135,17 @@ async function main() {
         await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;
       }
       if (req.method === "PATCH") {
-        if (url.pathname.endsWith("/prendas")) { await delay(700); sendJson({ message: "Prendas actualizadas correctamente." }); return; }
+        if (url.pathname.endsWith("/prendas")) {
+          const id=url.pathname.split("/").at(-2);
+          await delay(700);sendJson({data:{requerimiento:{id}}});return;
+        }
         let body = ""; for await (const chunk of req) body += chunk.toString();
         const update = JSON.parse(body); const row = records.find(r => r.id === update.id);
         if (row) row.estado = update.estado;
         await delay(300); sendJson({ id: row?.id, estado: row?.estado }); return;
+      }
+      if (url.pathname === "/api/requerimientos") {
+        const parsed=parseRequirementQuery(url.searchParams);await delay(250);sendJson(pageData(parsed.filters,parsed.page,records));return;
       }
       const { filters, page } = parseAdminQuery(url.searchParams);
       if (url.pathname.startsWith("/api/")) {
@@ -150,7 +163,8 @@ async function main() {
         }
         sendJson(pageData(filters, page,records)); return;
       }
-      const fixture = { initial: pageData(filters, page,records), options, initialFilters: { ...EMPTY_FILTERS, ...filters } };
+      const own=url.pathname==="/requerimientos"?parseRequirementQuery(url.searchParams):null;
+      const fixture = { initial: pageData(own?.filters??filters, own?.page??page,records), options, initialFilters: { ...EMPTY_FILTERS, ...filters } };
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end('<!doctype html><html lang="es"><head><meta name="viewport" content="width=device-width, initial-scale=1"/><title>QA Administración · Datos ficticios</title><link rel="stylesheet" href="/test.css"/></head><body><div id="root"></div><script>window.__ADMIN_FIXTURE__=' + JSON.stringify(fixture).replaceAll("<", "\\u003c") + '</script><script src="/test.js"></script></body></html>');
     } catch { res.writeHead(500); res.end("Error en servidor de pruebas"); }

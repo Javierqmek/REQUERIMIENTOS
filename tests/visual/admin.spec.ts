@@ -7,6 +7,8 @@ for (const [width, height] of sizes) {
     await page.setViewportSize({ width, height });
     await page.goto("/admin/requerimientos");
     await page.getByRole("button", { name: "Filtros · Todos los requerimientos" }).click();
+    await expect(page.getByLabel("Género de prenda")).toBeVisible();
+    await expect(page.getByLabel("Unidades mín.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Requerimientos", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "62 requerimientos encontrados" })).toBeVisible();
     const total = width >= 1280
@@ -37,6 +39,9 @@ test("filtros combinados, dependencia unidad y limpiar", async ({ page }) => {
   await page.getByLabel("Unidad / Sede", { exact: true }).selectOption(IDS.unidad);
   await page.getByLabel("Coordinador", { exact: true }).selectOption(IDS.coordinador);
   await page.getByLabel("Estado", { exact: true }).selectOption("Pendiente");
+  await page.getByLabel("Género de prenda").selectOption("HOMBRE");
+  await page.getByLabel("Unidades mín.").fill("3");
+  await page.getByLabel("Unidades máx.").fill("6");
   await expect(page.getByRole("button", { name: "Exportar Excel SIDIGE" })).toBeDisabled();
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   await expect(page.getByRole("heading", { name: "21 requerimientos encontrados" })).toBeVisible();

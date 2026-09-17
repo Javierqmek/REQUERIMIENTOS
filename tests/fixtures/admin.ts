@@ -11,6 +11,7 @@ export function fixtureRequirement(overrides: Partial<SidigeRequirement> = {}): 
     clientes: { nombre: " RENIEC " }, unidades: { nombre: "OFICINA REGISTRAL ATE" },
     personal: { cargo: "  AGENTE ", nombre: "RAMÍREZ   RIVERA JERY", dni: " 071389725 " },
     profiles: { nombre: "Javier Quispe", email: "javier@example.test" }, cantidad_prendas: 1, unidades_totales: 2, total_requerimiento: 40,
+    generos: ["AMBOS"],
     posible_duplicado: false, grupo_duplicado_id: null, grupo_duplicado_tamano: 1, potencialmente_incompleto: false,
     detalle_requerimiento: [{
       id: "77000000-0000-4000-8000-000000000001", created_at: "2026-09-02T15:00:00Z",

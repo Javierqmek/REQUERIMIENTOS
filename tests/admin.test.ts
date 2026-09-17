@@ -123,7 +123,15 @@ for (const key of ["cliente", "unidad", "coordinador"] as const) test("filtro po
 test("filtros combinados y fechas inclusivas en Perú", () => {
   const filters = { ...EMPTY_FILTERS, cliente: IDS.cliente, unidad: IDS.unidad, coordinador: IDS.coordinador, estado: "Pendiente" as const, desde: "2026-09-01", hasta: "2026-09-02", q: "Ramírez" };
   assert.deepEqual(parseAdminQuery(filterParams(filters, 2)), { filters, page: 2 });
-  assert.deepEqual(filterRpcArgs(filters), { p_cliente_id: IDS.cliente, p_unidad_id: IDS.unidad, p_coordinador_id: IDS.coordinador, p_estado: "Pendiente", p_desde: "2026-09-01T00:00:00-05:00", p_hasta: "2026-09-03T05:00:00.000Z", p_busqueda: "Ramírez", p_solo_duplicados: false, p_orden: "fecha", p_direccion: "desc" });
+  assert.deepEqual(filterRpcArgs(filters), { p_cliente_id: IDS.cliente, p_unidad_id: IDS.unidad, p_coordinador_id: IDS.coordinador, p_estado: "Pendiente", p_desde: "2026-09-01T00:00:00-05:00", p_hasta: "2026-09-03T05:00:00.000Z", p_busqueda: "Ramírez", p_genero: null, p_unidades_min: null, p_unidades_max: null, p_solo_duplicados: false, p_orden: "fecha", p_direccion: "desc" });
+});
+test("admin envía género y rango de unidades combinados a la RPC",()=>{
+  const filters={...EMPTY_FILTERS,cliente:IDS.cliente,estado:"Observado" as const,genero:"MUJER" as const,unidadesMin:"12",unidadesMax:"16"};
+  const parsed=parseAdminQuery(filterParams(filters)).filters;assert.deepEqual(parsed,filters);
+  const args=filterRpcArgs(parsed);assert.equal(args.p_genero,"MUJER");assert.equal(args.p_unidades_min,12);assert.equal(args.p_unidades_max,16);
+});
+test("admin rechaza un rango de unidades invertido",()=>{
+  assert.throws(()=>parseAdminQuery(new URLSearchParams("unidadesMin=20&unidadesMax=12")));
 });
 test("ordenamiento alterna ascendente, descendente y sin ordenar conservando filtros", () => {
   const base={...EMPTY_FILTERS,cliente:IDS.cliente,q:"Ramírez"};
