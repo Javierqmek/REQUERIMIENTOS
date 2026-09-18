@@ -76,7 +76,7 @@ async function main() {
       builder.onResolve({ filter: /^pdfjs-dist(?:\/legacy\/build\/pdf\.mjs)?$/ }, () => ({ path: "pdfjs-dist", namespace: "test-adapter" }));
       builder.onResolve({ filter: /lib\/supabase\/client$/ }, () => ({ path: "supabase", namespace: "test-adapter" }));
       builder.onLoad({ filter: /.*/, namespace: "test-adapter" }, args => ({
-        contents: args.path === "pdfjs-dist" ? 'export const GlobalWorkerOptions={workerSrc:"/test-worker.mjs"};export const getDocument=()=>({promise:Promise.resolve({numPages:1,getPage:async()=>({getViewport:({scale})=>{const nonA4=new URLSearchParams(window.location.search).get("nonA4")==="1";const w=nonA4?612:595,h=nonA4?792:842;return {width:w*scale,height:h*scale}},render:({canvasContext})=>{const c=canvasContext.canvas;canvasContext.fillStyle="#174EA6";canvasContext.fillRect(0,0,c.width,c.height);return {promise:Promise.resolve()}}})})});' :
+        contents: args.path === "pdfjs-dist" ? 'export const GlobalWorkerOptions={workerSrc:"/test-worker.mjs"};export const getDocument=(src)=>({promise:(async()=>{if(typeof src==="string"){const res=await fetch(src);if(!res.ok)throw new Error("No se pudo cargar el documento.")}return {numPages:1,getPage:async()=>({getViewport:({scale})=>{const nonA4=new URLSearchParams(window.location.search).get("nonA4")==="1";const w=nonA4?612:595,h=nonA4?792:842;return {width:w*scale,height:h*scale}},render:({canvasContext})=>{const c=canvasContext.canvas;canvasContext.fillStyle="#174EA6";canvasContext.fillRect(0,0,c.width,c.height);return {promise:Promise.resolve()}}})}})()});' :
           args.path === "next/link" ? 'import React from "react"; export default function Link(p){return React.createElement("a",p)}' :
           args.path === "next/image" ? 'import React from "react"; export default function Image({fill,unoptimized,...p}){void fill;void unoptimized;return React.createElement("img",p)}' :
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
@@ -98,10 +98,32 @@ async function main() {
       const sendJson = (value: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
       if (url.pathname === "/test.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); res.end(js.outputFiles[0].text); return; }
       if (url.pathname === "/test.css") { res.writeHead(200, { "Content-Type": "text/css" }); res.end(css.css); return; }
+      // El id terminado en 000000000404 simula el rechazo que en producción hace RLS (otro
+      // coordinador ajeno a la papeleta): en este arnés no hay base de datos real, así que la
+      // denegación de acceso al PDF se simula explícitamente para poder probar cómo reacciona
+      // el visor (ver entry.tsx: role=coordinador2 usa este id).
+      if (url.pathname.startsWith("/api/documentos/vacaciones/") && url.pathname.includes("000000000404") && url.pathname.endsWith("/archivo")) { sendJson({ error: "No autorizado." }, 403); return; }
       if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/archivo")) { res.writeHead(200, { "Content-Type": "application/pdf" }); res.end(testPdfBytes); return; }
       if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/preview") && req.method === "POST") { res.writeHead(200, { "Content-Type": "application/pdf", "Cache-Control":"private, no-store" }); res.end(testPdfBytes); return; }
       if (url.pathname === "/api/perfil/firma") { res.writeHead(200, { "Content-Type": "image/png" }); res.end(testStamp.bytes); return; }
       if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/accion") && req.method === "POST") { sendJson({ok:true}); return; }
+      if (/^\/api\/documentos\/vacaciones\/[^/]+\/firmar$/.test(url.pathname) && req.method === "POST") {
+        let body=""; for await(const chunk of req) body+=chunk.toString();
+        const input=JSON.parse(body||"{}") as { archivo_sha256_origen?:string };
+        await delay(250);
+        if (input.archivo_sha256_origen && input.archivo_sha256_origen !== "a".repeat(64)) { sendJson({ error:"La papeleta cambió mientras firmabas. Recarga antes de continuar." },409); return; }
+        sendJson({ id: "aa000000-0000-4000-8000-000000000001" }); return;
+      }
+      if (/^\/api\/documentos\/vacaciones\/[^/]+\/prueba$/.test(url.pathname) && req.method === "PATCH") {
+        let body=""; for await(const chunk of req) body+=chunk.toString();
+        const input=JSON.parse(body||"{}") as { es_prueba?:boolean };
+        await delay(150); sendJson({ id:"aa000000-0000-4000-8000-000000000001", es_prueba: Boolean(input.es_prueba) }); return;
+      }
+      if (url.pathname === "/api/documentos/vacaciones/prueba" && req.method === "POST") {
+        let body=""; for await(const chunk of req) body+=chunk.toString();
+        const input=JSON.parse(body||"{}") as { ids?:string[] };
+        await delay(300); sendJson({ eliminados: (input.ids||[]).length, archivos_borrados: (input.ids||[]).length }); return;
+      }
       if (url.pathname === "/api/documentos/vacaciones" && req.method === "POST") {
         for await (const chunk of req) void chunk; // drena el multipart sin parsearlo: solo se prueba la UI
         await delay(300); sendJson({ id: "aa000000-0000-4000-8000-000000000099" }, 201); return;

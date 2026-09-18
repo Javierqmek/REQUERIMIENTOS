@@ -9,12 +9,16 @@ import type { Role } from "@/lib/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { Alert } from "./ui/alert";
 import { ConfirmDialog } from "./ui/confirm-dialog";
+import { movePlacements,resizePlacements } from "@/lib/documents/placement-client";
 
 type WorkspacePlacement=Placement&{group?:string};
 type Props={id:string;pages:number;status:DocumentStatus;role:Role;userId:string;creatorId:string;signerId:string;placements:Placement[];profileReady:boolean;profileAssetMode?:"DIBUJADA"|"IMPORTADA";coordinatorSigned:boolean;pdfType:"original"|"coordinador"|"firmado"|"base";pdfHash?:string};
 const serialise=(items:WorkspacePlacement[],userId:string)=>JSON.stringify(items.filter(item=>item.usuario_id===userId).map(({tipo,pagina,x,y,ancho,alto})=>({tipo,pagina,x,y,ancho,alto})));
 
-async function renderPdfPage(pdf:PDFDocumentProxy,pageNumber:number,host:HTMLElement,target:HTMLCanvasElement,isCurrent:()=>boolean){
+// Exportada para que otros visores/editores (p.ej. components/vacation-sign-workspace.tsx)
+// reutilicen EXACTAMENTE esta técnica de render (canvas intermedio, guard de secuencia,
+// rotación de página) en vez de reimplementarla.
+export async function renderPdfPage(pdf:PDFDocumentProxy,pageNumber:number,host:HTMLElement,target:HTMLCanvasElement,isCurrent:()=>boolean){
  const pdfPage=await pdf.getPage(pageNumber);const rotation=pdfPage.rotate;const base=pdfPage.getViewport({scale:1,rotation});const scale=Math.min(1.7,Math.max(.45,(host.clientWidth-2)/base.width));const viewport=pdfPage.getViewport({scale,rotation});
  const buffer=document.createElement("canvas");buffer.width=Math.ceil(viewport.width);buffer.height=Math.ceil(viewport.height);await pdfPage.render({canvasContext:buffer.getContext("2d")!,viewport}).promise;
  if(!isCurrent())return false;target.width=buffer.width;target.height=buffer.height;target.style.aspectRatio=`${viewport.width}/${viewport.height}`;const context=target.getContext("2d")!;context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,target.width,target.height);context.drawImage(buffer,0,0);return true;
@@ -44,12 +48,12 @@ export function DocumentWorkspace(props:Props){
  function add(tipo:"FIRMA"|"SELLO"){if(!props.profileReady){setMessage("Configura primero tu perfil de firma y sello.");return}setSelected(items.length);setItems(value=>[...value,{tipo,pagina:page,x:.58,y:.68,ancho:tipo==="FIRMA"?.25:.32,alto:tipo==="FIRMA"?.1:.13,usuario_id:props.userId}])}
  function addGroup(){add("SELLO")}
  function remove(index:number){setSelected(null);setItems(current=>current.filter((_,itemIndex)=>itemIndex!==index))}
- function move(index:number,e:React.PointerEvent){setSelected(index);if(previewMode||items[index].usuario_id!==props.userId||!canPlace)return;const box=wrap.current?.getBoundingClientRect();if(!box)return;const startX=e.clientX,startY=e.clientY,origin=items[index];const snapshot=items;e.currentTarget.setPointerCapture(e.pointerId);
-  const onMove=(event:PointerEvent)=>{const dx=(event.clientX-startX)/box.width,dy=(event.clientY-startY)/box.height;setItems(snapshot.map((item,i)=>{if(i!==index&&(!origin.group||item.group!==origin.group))return item;return{...item,x:Math.max(0,Math.min(1-item.ancho,item.x+dx)),y:Math.max(0,Math.min(1-item.alto,item.y+dy))}}))};
+ function move(index:number,e:React.PointerEvent){setSelected(index);if(previewMode||items[index].usuario_id!==props.userId||!canPlace)return;const box=wrap.current?.getBoundingClientRect();if(!box)return;const startX=e.clientX,startY=e.clientY,snapshot=items;e.currentTarget.setPointerCapture(e.pointerId);
+  const onMove=(event:PointerEvent)=>{const dx=(event.clientX-startX)/box.width,dy=(event.clientY-startY)/box.height;setItems(movePlacements(snapshot,index,dx,dy))};
   const finish=()=>{window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",finish)};window.addEventListener("pointermove",onMove);window.addEventListener("pointerup",finish);
  }
- function resize(index:number,e:React.PointerEvent){e.stopPropagation();if(previewMode||items[index].usuario_id!==props.userId||!canPlace)return;const box=wrap.current?.getBoundingClientRect();if(!box)return;const startX=e.clientX,startY=e.clientY,origin=items[index];const snapshot=items;
-  const onMove=(event:PointerEvent)=>{const dx=(event.clientX-startX)/box.width,dy=(event.clientY-startY)/box.height;const scale=Math.max(.55,Math.min(1.8,1+Math.max(dx/origin.ancho,dy/origin.alto)));setItems(snapshot.map((item,i)=>{if(i!==index&&(!origin.group||item.group!==origin.group))return item;const anchorX=origin.group?Math.min(...snapshot.filter(x=>x.group===origin.group).map(x=>x.x)):origin.x;const anchorY=origin.group?Math.min(...snapshot.filter(x=>x.group===origin.group).map(x=>x.y)):origin.y;const ancho=Math.max(.06,Math.min(1-item.x,item.ancho*scale));const alto=Math.max(.04,Math.min(1-item.y,item.alto*scale));return{...item,x:anchorX+(item.x-anchorX)*scale,y:anchorY+(item.y-anchorY)*scale,ancho,alto}}))};
+ function resize(index:number,e:React.PointerEvent){e.stopPropagation();if(previewMode||items[index].usuario_id!==props.userId||!canPlace)return;const box=wrap.current?.getBoundingClientRect();if(!box)return;const startX=e.clientX,startY=e.clientY,snapshot=items;
+  const onMove=(event:PointerEvent)=>{const dx=(event.clientX-startX)/box.width,dy=(event.clientY-startY)/box.height;setItems(resizePlacements(snapshot,index,dx,dy))};
   const finish=()=>{window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",finish)};window.addEventListener("pointermove",onMove);window.addEventListener("pointerup",finish);
  }
  async function action(accion:string,extra:Record<string,unknown>={}){

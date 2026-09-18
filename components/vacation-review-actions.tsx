@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, LoaderCircle, MessageSquareWarning, X } from "lucide-react";
+import { LoaderCircle, MessageSquareWarning, X } from "lucide-react";
 import { Alert } from "./ui/alert";
 
 function ObserveDialog({ open, busy, motivo, onMotivo, onCancel, onConfirm }: {
@@ -59,11 +59,10 @@ export function VacationReviewActions({ papeletaId }: { papeletaId: string }) {
 
   return <div className="section-card">
     <h2 className="section-title">Revisión</h2>
-    <p className="mt-1 text-sm text-[#607089]">Como administrador o gerente, puedes marcar esta papeleta conforme o devolverla con un motivo de observación.</p>
+    <p className="mt-1 text-sm text-[#607089]">Como administrador o gerente, puedes devolver esta papeleta con un motivo de observación para que el coordinador la corrija.</p>
     {error && <div className="mt-3"><Alert kind="error">{error}</Alert></div>}
-    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-      <button className="btn btn-secondary" disabled={busy} onClick={() => { setError(""); setObserving(true); }}><MessageSquareWarning size={17} />Observar</button>
-      <button className="btn btn-primary" disabled={busy} onClick={() => void send({ accion: "conforme" })}>{busy ? <LoaderCircle className="animate-spin" size={17} /> : <CheckCircle2 size={17} />} Marcar conforme</button>
+    <div className="mt-4">
+      <button className="btn btn-secondary" disabled={busy} onClick={() => { setError(""); setObserving(true); }}>{busy && <LoaderCircle className="animate-spin" size={17} />}<MessageSquareWarning size={17} />Observar</button>
     </div>
     <ObserveDialog open={observing} busy={busy} motivo={motivo} onMotivo={setMotivo}
       onCancel={() => { if (!busy) { setObserving(false); setMotivo(""); } }}

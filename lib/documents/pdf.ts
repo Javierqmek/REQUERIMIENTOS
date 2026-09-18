@@ -4,8 +4,11 @@ import type { Placement } from "./types";
 import { DOCUMENT_BUCKET,sha256 } from "./security";
 import { fitImageInPlacement } from "./placement";
 
-export async function createSignedPdf(db:SupabaseClient,originalPath:string,placements:Placement[],expectedSourceHash?:string){
-  const original=await db.storage.from(DOCUMENT_BUCKET).download(originalPath);
+// sourceBucket permite reutilizar este mismo motor de composición para PDFs que viven fuera del
+// bucket de Documentos (p.ej. papeletas-vacaciones): los assets de firma (sello/firma) siguen
+// viviendo siempre en DOCUMENT_BUCKET porque perfiles_firma es compartido entre módulos.
+export async function createSignedPdf(db:SupabaseClient,originalPath:string,placements:Placement[],expectedSourceHash?:string,sourceBucket:string=DOCUMENT_BUCKET){
+  const original=await db.storage.from(sourceBucket).download(originalPath);
   if(original.error)throw new Error("No se pudo leer el PDF original.");
   const sourceBytes=new Uint8Array(await original.data.arrayBuffer());if(expectedSourceHash&&sha256(sourceBytes)!==expectedSourceHash)throw new Error("La versión base no coincide con su hash registrado.");
   const pdf=await PDFDocument.load(sourceBytes);

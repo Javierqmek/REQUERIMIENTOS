@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { DocumentSectionNav } from "@/components/document-section-nav";
 import { VacationRequestList } from "@/components/vacation-request-list";
+import { VacationManagerInbox } from "@/components/vacation-manager-inbox";
 import { Alert } from "@/components/ui/alert";
 import { PAPELETA_LIST_SELECT, type PapeletaRow } from "@/lib/vacations/types";
 
@@ -35,6 +36,10 @@ export default async function VacationRequestsPage() {
     {/* Nunca se oculta un error de consulta como si fuera "sin registros": una lista vacía por
         falla silenciosa es indistinguible de "no hay papeletas" para quien la mira. */}
     {error ? <Alert kind="error">No pudimos consultar las papeletas de vacaciones. Intenta recargar la página.</Alert>
+      // El gerente ve la bandeja compacta pedida por el requerimiento (colaborador, estado,
+      // fecha, coordinador, cliente, unidad + Ver detalle/Firmar). Coordinador y admin conservan
+      // la lista con más contexto, que ya tenían y siguen necesitando.
+      : profile.role === "gerente" ? <VacationManagerInbox rows={(data || []) as unknown as PapeletaRow[]} />
       : <VacationRequestList rows={(data || []) as unknown as PapeletaRow[]} showCoordinador={profile.role !== "coordinador"} />}
   </section>;
 }

@@ -8,9 +8,12 @@ import { isA4Size } from "../lib/vacations/paper";
 import { validatePapeletaPdf } from "../lib/vacations/pdf";
 import { papeletaCorrectionSchema, papeletaSchema } from "../lib/vacations/validations";
 import { isValidRequestId, papeletaCorrectionStoragePath, papeletaStoragePath } from "../lib/vacations/storage-path";
-import { makeRegisterPapeletaHandler } from "../lib/vacations/handlers";
-import { canCorrect, canMarkConforme, canObserve, canReview } from "../lib/vacations/review";
-import { PAPELETA_DETAIL_SELECT, PAPELETA_LIST_SELECT } from "../lib/vacations/types";
+import { makeDeleteTestPapeletasHandler, makeMarkTestPapeletaHandler, makePreviewSignPapeletaHandler, makeRegisterPapeletaHandler, makeRetryStorageCleanupHandler, makeSignPapeletaHandler } from "../lib/vacations/handlers";
+import { movePlacements, resizePlacements } from "../lib/documents/placement-client";
+import { canCorrect, canObserve, canReview, canSign } from "../lib/vacations/review";
+import { PAPELETA_DETAIL_SELECT, PAPELETA_LIST_SELECT, papeletaEstadoLabel, papeletaVersionTipoLabel } from "../lib/vacations/types";
+import { allowTestPapeletaDeletion } from "../lib/vacations/config";
+import { createSignedPdf } from "../lib/documents/pdf";
 import { CATALOG_KINDS, catalogCreateSchema, catalogDeleteSchema, catalogUpdateSchema } from "../lib/admin/maintenance";
 
 const asArrayBuffer = (bytes: Uint8Array) => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -474,20 +477,26 @@ test("el listado nunca oculta un error de consulta como si fuera una lista vací
 });
 
 // --- Diseño de estados y permisos (lógica pura) ---
-test("REGISTRADO: admin y gerente pueden revisar (observar o marcar conforme); coordinador no, y nadie revisa su propia papeleta", () => {
+test("REGISTRADO: admin y gerente pueden observar; coordinador no, y nadie revisa su propia papeleta", () => {
   const owner = "coord-1", other = "coord-2";
   assert.equal(canObserve("admin", owner, other, "REGISTRADO"), true);
   assert.equal(canObserve("gerente", owner, other, "REGISTRADO"), true);
   assert.equal(canObserve("coordinador", owner, other, "REGISTRADO"), false);
   assert.equal(canObserve("admin", owner, owner, "REGISTRADO"), false); // nunca su propia papeleta
-  assert.equal(canMarkConforme("admin", owner, other, "REGISTRADO"), true);
-  assert.equal(canMarkConforme("admin", owner, other, "OBSERVADO"), false); // solo desde REGISTRADO
 });
-test("OBSERVADO habilita corrección solo al coordinador dueño; REGISTRADO y CONFORME quedan bloqueados", () => {
+test("solo el gerente puede firmar (admin NO firma por defecto), y solo desde REGISTRADO", () => {
+  const owner = "coord-1", other = "coord-2";
+  assert.equal(canSign("gerente", owner, other, "REGISTRADO"), true);
+  assert.equal(canSign("admin", owner, other, "REGISTRADO"), false); // decisión explícita: admin no firma
+  assert.equal(canSign("gerente", owner, other, "OBSERVADO"), false);
+  assert.equal(canSign("gerente", owner, other, "FIRMADO"), false);
+  assert.equal(canSign("gerente", owner, owner, "REGISTRADO"), false); // nunca su propia papeleta
+});
+test("OBSERVADO habilita corrección solo al coordinador dueño; REGISTRADO y FIRMADO quedan bloqueados", () => {
   const owner = "coord-1", other = "coord-2";
   assert.equal(canCorrect("coordinador", owner, owner, "OBSERVADO"), true);
   assert.equal(canCorrect("coordinador", owner, owner, "REGISTRADO"), false);
-  assert.equal(canCorrect("coordinador", owner, owner, "CONFORME"), false);
+  assert.equal(canCorrect("coordinador", owner, owner, "FIRMADO"), false);
   assert.equal(canCorrect("coordinador", owner, other, "OBSERVADO"), false); // no es el dueño
   assert.equal(canCorrect("admin", owner, owner, "OBSERVADO"), false); // solo coordinador corrige
 });
@@ -652,4 +661,474 @@ test("el listado nunca vuelve a ocultar un error de consulta (ver corrección pr
   assert.match(source, /const \{ data, error \} = await query;/);
   assert.match(source, /error \? <Alert kind="error">/);
   assert.match(source, /export const dynamic = "force-dynamic";/);
+});
+
+// ============================================================================
+// Evolución del módulo: FIRMADO real (firma del gerente reutilizando el motor de Documentos),
+// borrado controlado de papeletas de prueba, y visor de PDF en el detalle.
+// ============================================================================
+
+test("papeletaEstadoLabel: FIRMADO es el estado terminal orientado a firma; CONFORME se conserva como histórico, nunca se confunde con FIRMADO", () => {
+  assert.deepEqual(Object.keys(papeletaEstadoLabel).sort(), ["CONFORME", "FIRMADO", "OBSERVADO", "REGISTRADO"]);
+  assert.equal(papeletaEstadoLabel.REGISTRADO, "Pendiente de firma");
+  assert.equal(papeletaEstadoLabel.FIRMADO, "Firmado");
+  assert.equal(papeletaEstadoLabel.CONFORME, "Conforme (histórico)");
+  assert.notEqual(papeletaEstadoLabel.CONFORME, papeletaEstadoLabel.FIRMADO);
+});
+test("papeletaVersionTipoLabel distingue Original / Corrección / Firmado para el visor", () => {
+  assert.deepEqual(papeletaVersionTipoLabel, { ORIGINAL: "Original", CORRECCION: "Corrección", FIRMADO: "Firmado" });
+});
+test("PAPELETA_DETAIL_SELECT incluye los metadatos de firma y el hint de FK del firmante", () => {
+  assert.match(PAPELETA_DETAIL_SELECT, /firmado_por,firmado_at,firma_perfil_version/);
+  assert.match(PAPELETA_DETAIL_SELECT, /firmante:profiles!papeletas_vacaciones_firmado_por_fkey\(nombre\)/);
+});
+test("PAPELETA_LIST_SELECT y PAPELETA_DETAIL_SELECT exponen es_prueba para el marcado explícito admin", () => {
+  assert.match(PAPELETA_LIST_SELECT, /(?:^|,)es_prueba(?:,|$)/);
+  assert.match(PAPELETA_DETAIL_SELECT, /(?:^|,)es_prueba,firmado_por/);
+});
+
+test("202609200001 agrega FIRMADO como valor NUEVO del enum (no renombra CONFORME): ADD VALUE va FUERA de begin/commit", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  const beginIndex = sql.indexOf("\nbegin;");
+  const addIndex = sql.indexOf("add value if not exists 'FIRMADO'");
+  assert.ok(addIndex > -1 && addIndex < beginIndex, "ADD VALUE debe ir ANTES de begin; (restricción de PostgreSQL, igual que OBSERVADO/CONFORME en 202609190001)");
+  // Ninguna línea EJECUTABLE (no comentario) debe renombrar CONFORME: convertiría filas
+  // históricas sin metadatos de firma en FIRMADO y violaría el check de coherencia (esto es
+  // justamente el incidente real ya ocurrido en Supabase que motivó este cambio).
+  const executableLines = sql.split("\n").filter(line => !line.trim().startsWith("--"));
+  assert.ok(!executableLines.some(line => /rename value 'CONFORME' to 'FIRMADO'/.test(line)), "no debe existir una sentencia SQL ejecutable que renombre CONFORME a FIRMADO");
+});
+test("una papeleta CONFORME histórica (sin metadatos de firma) nunca viola el check de coherencia: el check solo exige metadatos cuando estado='FIRMADO'", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /add constraint papeletas_vacaciones_firma_coherente check \(\s*\n\s*\(estado='FIRMADO'\) = \(firmado_por is not null/);
+});
+test("CONFORME histórico recibe la misma protección que FIRMADO: no puede marcarse como prueba ni eliminarse", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /if v_doc\.estado in \('FIRMADO','CONFORME'\) then raise exception 'Una papeleta firmada o conforme no puede marcarse como prueba'/);
+  assert.match(sql, /if exists\(select 1 from public\.papeletas_vacaciones p where p\.id=any\(p_ids\) and p\.estado in \('FIRMADO','CONFORME'\)\) then/);
+});
+test("202609200001 no modifica 202609170001/202609180001/202609190001: solo agrega y redefine (CREATE OR REPLACE / DROP+CREATE POLICY)", async () => {
+  const [sql, v1, v2, v3] = await Promise.all([
+    readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8"),
+    readFile("supabase/migrations/202609170001_papeletas_vacaciones.sql", "utf8"),
+    readFile("supabase/migrations/202609180001_admin_catalogo_provincias.sql", "utf8"),
+    readFile("supabase/migrations/202609190001_papeletas_revision.sql", "utf8"),
+  ]);
+  assert.ok(sql.length > 0 && v1.length > 0 && v2.length > 0 && v3.length > 0);
+  assert.match(sql, /Ejecutar después de 202609190001_papeletas_revision\.sql/);
+});
+test("papeletas_vacaciones gana columnas de firma coherentes entre sí (check firma_coherente) y es_prueba explícito, default false", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /add column firmado_por uuid references public\.profiles\(id\)/);
+  assert.match(sql, /add column firma_perfil_id uuid references public\.perfiles_firma\(id\)/);
+  assert.match(sql, /constraint papeletas_vacaciones_firma_coherente check/);
+  assert.match(sql, /add column es_prueba boolean not null default false/);
+});
+test("firmar_papeleta_vacaciones: solo gerente, nunca su propia papeleta, solo desde REGISTRADO, concurrencia optimista y perfil activo propio", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /create function public\.firmar_papeleta_vacaciones/);
+  assert.match(sql, /if auth\.uid\(\) is null or not private\.es_gerente\(\) then\s*\n\s*raise exception 'Solo el gerente puede firmar'/);
+  assert.match(sql, /if v_doc\.coordinador_id=auth\.uid\(\) then raise exception 'No puedes firmar tu propia papeleta'/);
+  assert.match(sql, /if v_doc\.estado<>'REGISTRADO' then raise exception 'Solo puede firmarse una papeleta pendiente de firma'/);
+  assert.match(sql, /where id=p_perfil_firma_id and usuario_id=auth\.uid\(\) and activo/);
+});
+test("firmar_papeleta_vacaciones verifica papeleta_id + versión + SHA-256 de origen: si cualquiera cambió, rechaza sin firmar una versión vieja", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /p_papeleta_id uuid,p_version_esperada integer,p_archivo_sha256_origen text,p_perfil_firma_id uuid,/);
+  assert.match(sql, /if p_version_esperada is distinct from v_doc\.version_actual or p_archivo_sha256_origen is distinct from v_doc\.archivo_sha256 then/);
+  assert.match(sql, /raise exception 'La papeleta cambió mientras firmabas\. Recarga antes de continuar\.' using errcode='40001';/);
+});
+test("firmar_papeleta_vacaciones nunca sobrescribe: inserta versión FIRMADO nueva y solo entonces mueve el puntero vigente + evento FIRMADO", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  const fnStart = sql.indexOf("create function public.firmar_papeleta_vacaciones");
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  const body = sql.slice(fnStart, fnEnd);
+  assert.match(body, /insert into public\.papeletas_vacaciones_versiones\(/);
+  assert.match(body, /'FIRMADO'\s*\);/);
+  assert.match(body, /update public\.papeletas_vacaciones set[\s\S]*estado='FIRMADO'/);
+  assert.match(body, /insert into public\.papeletas_vacaciones_eventos\(papeleta_id,usuario_id,accion,estado_anterior,estado_nuevo,version\)\s*\n\s*values \(p_papeleta_id,auth\.uid\(\),'FIRMADO','REGISTRADO','FIRMADO',v_version\);/);
+});
+test("marcar_conforme_papeleta_vacaciones queda retirado (drop function): la única vía a FIRMADO es la firma real", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /drop function if exists public\.marcar_conforme_papeleta_vacaciones\(uuid\);/);
+});
+test("el trigger de inmutabilidad de versiones solo cede en un borrado de prueba explícito (admin + flag de sesión), nunca por defecto", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /current_setting\('app\.test_papeleta_deletion',true\)='on'/);
+  assert.match(sql, /auth\.uid\(\) is not null and public\.is_admin\(\)/);
+});
+test("borrado de prueba: arquitectura explícita es_prueba (nunca por nombre), doble flag (private.app_config + entorno), nunca FIRMADO", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /insert into private\.app_config\(clave,habilitado\) values \('allow_test_papeleta_deletion',true\)/);
+  assert.match(sql, /create function private\.admin_marcar_papeleta_prueba/);
+  assert.match(sql, /if v_doc\.estado in \('FIRMADO','CONFORME'\) then raise exception 'Una papeleta firmada o conforme no puede marcarse como prueba'/);
+  assert.match(sql, /create function private\.admin_eliminar_papeletas_prueba/);
+  assert.match(sql, /if exists\(select 1 from public\.papeletas_vacaciones p where p\.id=any\(p_ids\) and not p\.es_prueba\) then/);
+  assert.match(sql, /if exists\(select 1 from public\.papeletas_vacaciones p where p\.id=any\(p_ids\) and p\.estado in \('FIRMADO','CONFORME'\)\) then/);
+});
+test("Storage: el gerente solo puede subir el PDF firmado bajo la carpeta del coordinador si la papeleta está REGISTRADO (pendiente de firma)", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /create policy papeletas_storage_insert_firma on storage\.objects for insert to authenticated/);
+  assert.match(sql, /with check\(bucket_id='papeletas-vacaciones' and private\.es_gerente\(\) and exists\(/);
+  assert.match(sql, /and p\.estado='REGISTRADO'/);
+});
+
+test("createSignedPdf (motor de Documentos) ahora acepta un bucket de origen distinto: se reutiliza para papeletas sin duplicar el motor", async () => {
+  const source = await readFile("lib/documents/pdf.ts", "utf8");
+  assert.match(source, /sourceBucket:string=DOCUMENT_BUCKET/);
+  assert.match(source, /db\.storage\.from\(sourceBucket\)\.download\(originalPath\)/);
+  assert.match(source, /db\.storage\.from\(DOCUMENT_BUCKET\)\.download\(placement\.asset_path\)/);
+  assert.equal(typeof createSignedPdf, "function");
+});
+test("no hay posición fija de firma: el editor interactivo elige pagina/x/y en cada firma, createSignedPdf solo aplica la colocación recibida", async () => {
+  const source = await readFile("lib/documents/pdf.ts", "utf8");
+  assert.match(source, /pdf\.getPage\(placement\.pagina-1\)/);
+  assert.doesNotMatch(source, /pagina===-1/);
+  const handlers = await readFile("lib/vacations/handlers.ts", "utf8");
+  assert.doesNotMatch(handlers, /x:\s*0\.6,\s*y:\s*0\.04/); // ya no hay coordenadas hardcodeadas del sello
+});
+
+test("lib/vacations/config.ts: ALLOW_TEST_PAPELETA_DELETION sigue el mismo patrón que ALLOW_TEST_REQUIREMENT_DELETION", () => {
+  const original = process.env.ALLOW_TEST_PAPELETA_DELETION;
+  try {
+    delete process.env.ALLOW_TEST_PAPELETA_DELETION;
+    assert.equal(allowTestPapeletaDeletion(), false);
+    process.env.ALLOW_TEST_PAPELETA_DELETION = "true";
+    assert.equal(allowTestPapeletaDeletion(), true);
+    process.env.ALLOW_TEST_PAPELETA_DELETION = "false";
+    assert.equal(allowTestPapeletaDeletion(), false);
+  } finally {
+    if (original === undefined) delete process.env.ALLOW_TEST_PAPELETA_DELETION;
+    else process.env.ALLOW_TEST_PAPELETA_DELETION = original;
+  }
+});
+
+function fakeProfile(role: "admin" | "coordinador" | "gerente", id = "user-1") {
+  return { id, email: `${role}@example.com`, nombre: role, role };
+}
+test("makeSignPapeletaHandler: solo gerente puede intentar firmar (403 para admin/coordinador)", async () => {
+  for (const role of ["admin", "coordinador"] as const) {
+    const handler = makeSignPapeletaHandler({ getProfile: async () => fakeProfile(role), getDb: async () => ({} as SupabaseClient) });
+    const response = await handler(new Request("https://x.test/firmar", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1 }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    assert.equal(response.status, 403);
+  }
+});
+test("makeSignPapeletaHandler: rechaza version_esperada inválida antes de tocar la BD", async () => {
+  const handler = makeSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => ({} as SupabaseClient) });
+  const response = await handler(new Request("https://x.test/firmar", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 0 }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(response.status, 400);
+});
+test("makeMarkTestPapeletaHandler: solo admin puede marcar es_prueba (403 para coordinador/gerente)", async () => {
+  for (const role of ["coordinador", "gerente"] as const) {
+    const handler = makeMarkTestPapeletaHandler({ getProfile: async () => fakeProfile(role), getDb: async () => ({} as SupabaseClient) });
+    const response = await handler(new Request("https://x.test/prueba", { method: "PATCH", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ es_prueba: true }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    assert.equal(response.status, 403);
+  }
+});
+test("makeDeleteTestPapeletasHandler: solo admin, y el flag de entorno deshabilitado bloquea antes de llamar a la RPC", async () => {
+  const handlerNonAdmin = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => ({} as SupabaseClient) }, () => true);
+  const responseNonAdmin = await handlerNonAdmin(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
+  assert.equal(responseNonAdmin.status, 403);
+
+  let rpcCalled = false;
+  const fakeDb = { rpc: async () => { rpcCalled = true; return { data: [], error: null }; } } as unknown as SupabaseClient;
+  const handlerDisabled = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => false);
+  const responseDisabled = await handlerDisabled(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
+  assert.equal(responseDisabled.status, 403);
+  assert.equal(rpcCalled, false, "con el flag apagado nunca debe llegar a llamar la RPC");
+});
+test("makeDeleteTestPapeletasHandler: rechaza listas vacías, duplicadas o más de 100 ids antes de llamar a la RPC", async () => {
+  let rpcCalled = false;
+  const fakeDb = { rpc: async () => { rpcCalled = true; return { data: [], error: null }; } } as unknown as SupabaseClient;
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const send = (ids: unknown) => handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids }) }));
+  assert.equal((await send([])).status, 400);
+  assert.equal((await send([id, id])).status, 400);
+  assert.equal((await send(Array.from({ length: 101 }, () => id))).status, 400);
+  assert.equal(rpcCalled, false);
+});
+test("makeDeleteTestPapeletasHandler: en éxito, borra en Storage exactamente las rutas que devolvió la RPC y las confirma en la cola", async () => {
+  const removed: string[] = [];
+  const confirmed: unknown[] = [];
+  const fakeDb = {
+    rpc: async (name: string, args?: Record<string, unknown>) => {
+      if (name === "admin_eliminar_papeletas_prueba") return { data: ["coord/a/v1.pdf", "coord/a/v2.pdf"], error: null };
+      if (name === "admin_confirmar_borrado_storage") { confirmed.push(args?.p_paths); return { data: 2, error: null }; }
+      throw new Error(`RPC inesperada en el test: ${name}`);
+    },
+    storage: { from: () => ({ remove: async (paths: string[]) => { removed.push(...paths); return { data: paths.map(name => ({ name })), error: null }; } }) },
+  } as unknown as SupabaseClient;
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
+  const data = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(removed, ["coord/a/v1.pdf", "coord/a/v2.pdf"]);
+  assert.equal(data.archivos_borrados, 2);
+  assert.equal(data.archivos_pendientes, 0);
+  assert.deepEqual(confirmed, [["coord/a/v1.pdf", "coord/a/v2.pdf"]]);
+});
+
+// ============================================================================
+// Auditoría: Postgres y Supabase Storage no comparten transacción. La RPC ya confirma el borrado
+// en BD (y deja cada ruta en private.papeleta_storage_borrado_pendiente, ver migración) ANTES de
+// que la app intente tocar Storage. Estos tests cubren qué pasa cuando ese paso posterior falla,
+// total o parcialmente, y confirman que nunca se reporta como éxito silencioso ni se pierde el
+// rastro de qué falta borrar.
+// ============================================================================
+test("fallo de Storage total: la BD ya se borró, Storage falla completo -- se reporta como pendiente, nunca como éxito, y se registra el intento fallido", async () => {
+  const registered: unknown[] = [];
+  const confirmedCalls: unknown[] = [];
+  const fakeDb = {
+    rpc: async (name: string, args?: Record<string, unknown>) => {
+      if (name === "admin_eliminar_papeletas_prueba") return { data: ["coord/a/v1.pdf", "coord/a/v2.pdf"], error: null };
+      if (name === "admin_registrar_intento_borrado_storage") { registered.push(args); return { data: null, error: null }; }
+      if (name === "admin_confirmar_borrado_storage") { confirmedCalls.push(args); return { data: 0, error: null }; }
+      throw new Error(`RPC inesperada: ${name}`);
+    },
+    storage: { from: () => ({ remove: async () => ({ data: null, error: { message: "network error" } }) }) },
+  } as unknown as SupabaseClient;
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
+  const data = await response.json();
+  assert.equal(response.status, 200); // el borrado en BD sí fue exitoso: no es un error HTTP
+  assert.equal(data.eliminados, 1);
+  assert.equal(data.archivos_borrados, 0);
+  assert.equal(data.archivos_pendientes, 2); // nunca se informa como si los 2 se hubieran borrado
+  assert.equal(confirmedCalls.length, 0); // jamás se confirma (retira de la cola) lo que no se borró
+  assert.deepEqual(registered, [{ p_paths: ["coord/a/v1.pdf", "coord/a/v2.pdf"], p_error: "network error" }]);
+});
+test("fallo de Storage parcial: de 2 archivos, Storage solo confirma 1 -- el otro queda pendiente, no se confirma en la cola", async () => {
+  const confirmedCalls: unknown[] = [];
+  const registered: unknown[] = [];
+  const fakeDb = {
+    rpc: async (name: string, args?: Record<string, unknown>) => {
+      if (name === "admin_eliminar_papeletas_prueba") return { data: ["coord/a/v1.pdf", "coord/a/v2.pdf"], error: null };
+      if (name === "admin_confirmar_borrado_storage") { confirmedCalls.push(args); return { data: 1, error: null }; }
+      if (name === "admin_registrar_intento_borrado_storage") { registered.push(args); return { data: null, error: null }; }
+      throw new Error(`RPC inesperada: ${name}`);
+    },
+    // Supabase Storage omite del array `data` las rutas que no pudo resolver, sin marcarlas como
+    // error individual: aquí se simula justo ese comportamiento (solo v1.pdf viene en la respuesta).
+    storage: { from: () => ({ remove: async () => ({ data: [{ name: "coord/a/v1.pdf" }], error: null }) }) },
+  } as unknown as SupabaseClient;
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
+  const data = await response.json();
+  assert.equal(data.archivos_borrados, 1);
+  assert.equal(data.archivos_pendientes, 1);
+  assert.deepEqual(confirmedCalls, [{ p_paths: ["coord/a/v1.pdf"] }]);
+  assert.deepEqual(registered, [{ p_paths: ["coord/a/v2.pdf"], p_error: "Storage no confirmó la eliminación de estas rutas." }]);
+});
+test("fallo de BD: si la RPC de borrado falla, jamás se llama a Storage (nada que limpiar, nada que confirmar)", async () => {
+  let storageCalled = false;
+  const fakeDb = {
+    rpc: async (name: string) => {
+      if (name === "admin_eliminar_papeletas_prueba") return { data: null, error: { code: "55000", message: "Solo se pueden eliminar papeletas marcadas como prueba" } };
+      throw new Error(`RPC inesperada: ${name}`);
+    },
+    storage: { from: () => ({ remove: async () => { storageCalled = true; return { data: [], error: null }; } }) },
+  } as unknown as SupabaseClient;
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
+  assert.equal(response.status, 409);
+  assert.equal(storageCalled, false);
+});
+test("makeRetryStorageCleanupHandler: solo admin, lista lo pendiente y reintenta Storage igual que el borrado inicial", async () => {
+  const removedPaths: string[] = [];
+  const confirmedCalls: unknown[] = [];
+  const fakeDb = {
+    rpc: async (name: string, args?: Record<string, unknown>) => {
+      if (name === "admin_listar_borrados_pendientes") return { data: [{ archivo_path: "coord/a/v2.pdf" }], error: null };
+      if (name === "admin_confirmar_borrado_storage") { confirmedCalls.push(args); return { data: 1, error: null }; }
+      throw new Error(`RPC inesperada: ${name}`);
+    },
+    storage: { from: () => ({ remove: async (paths: string[]) => { removedPaths.push(...paths); return { data: paths.map(name => ({ name })), error: null }; } }) },
+  } as unknown as SupabaseClient;
+  const nonAdmin = makeRetryStorageCleanupHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeDb });
+  assert.equal((await nonAdmin(new Request("https://x.test/reintentar", { method: "POST", headers: { origin: "https://x.test" } }))).status, 403);
+
+  const handler = makeRetryStorageCleanupHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb });
+  const response = await handler(new Request("https://x.test/reintentar", { method: "POST", headers: { origin: "https://x.test" } }));
+  const data = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(removedPaths, ["coord/a/v2.pdf"]);
+  assert.equal(data.archivos_borrados, 1);
+  assert.equal(data.archivos_pendientes, 0);
+  assert.deepEqual(confirmedCalls, [{ p_paths: ["coord/a/v2.pdf"] }]);
+});
+
+test("navegación: Vacaciones encabeza el módulo Documentos y Mantenimiento solo aparece para admin", async () => {
+  const source = await readFile("components/document-section-nav.tsx", "utf8");
+  assert.match(source, /const documentTypes=\[\{href:"\/documentos\/vacaciones"/);
+  assert.match(source, /role==="admin"\?\[\{href:"\/documentos\/vacaciones\/mantenimiento"/);
+});
+test("el detalle de una papeleta ahora incluye el visor de PDF (no exige descargar el archivo para revisarlo)", async () => {
+  const source = await readFile("app/(private)/documentos/vacaciones/[id]/page.tsx", "utf8");
+  assert.match(source, /<VacationPdfViewer papeletaId=\{row\.id\} \/>/);
+});
+test("el visor de PDF de vacaciones nunca expone el bucket ni el path: solo pide bytes al endpoint privado", async () => {
+  const viewer = await readFile("components/vacation-pdf-viewer.tsx", "utf8");
+  assert.match(viewer, /\/api\/documentos\/vacaciones\/\$\{papeletaId\}\/archivo/);
+  assert.doesNotMatch(viewer, /papeletas-vacaciones/);
+});
+test("el endpoint de archivo de vacaciones nunca sirve el PDF sin sesión y valida el hash antes de responder", async () => {
+  const source = await readFile("app/api/documentos/vacaciones/[id]/archivo/route.ts", "utf8");
+  assert.match(source, /if \(!profile\) return NextResponse\.json\(\{ error: "Sesión requerida\." \}, \{ status: 401 \}\);/);
+  assert.match(source, /if \(sha256\(bytes\) !== sha\)/);
+  assert.match(source, /Cache-Control": "private, no-store"/);
+});
+
+// ============================================================================
+// Corrección: la firma del gerente ya NO usa posición fija. Reutiliza el editor de colocación
+// interactivo de Documentos/Firma (mismo render, misma matemática de arrastre/redimensión) y
+// verifica papeleta_id + versión + SHA-256 de origen antes de componer el PDF final.
+// ============================================================================
+
+test("movePlacements y resizePlacements son las MISMAS funciones que usa el editor de Documentos (importadas, no reimplementadas)", async () => {
+  const workspace = await readFile("components/document-workspace.tsx", "utf8");
+  assert.match(workspace, /import \{ movePlacements,resizePlacements \} from "@\/lib\/documents\/placement-client";/);
+  assert.match(workspace, /export async function renderPdfPage/);
+  const signWorkspace = await readFile("components/vacation-sign-workspace.tsx", "utf8");
+  assert.match(signWorkspace, /import \{ renderPdfPage \} from "\.\/document-workspace";/);
+  assert.match(signWorkspace, /import \{ movePlacements, resizePlacements \} from "@\/lib\/documents\/placement-client";/);
+});
+test("movePlacements mantiene la colocación dentro de los límites de la página (0..1-tamaño)", () => {
+  const items = [{ x: 0.5, y: 0.5, ancho: 0.3, alto: 0.2 }];
+  assert.deepEqual(movePlacements(items, 0, 0.9, 0), [{ x: 0.7, y: 0.5, ancho: 0.3, alto: 0.2 }]); // clamp a 1-ancho
+  assert.deepEqual(movePlacements(items, 0, -0.9, 0), [{ x: 0, y: 0.5, ancho: 0.3, alto: 0.2 }]); // clamp a 0
+});
+test("resizePlacements escala manteniendo el ancla y respeta los límites mínimos/máximos", () => {
+  const items = [{ x: 0.1, y: 0.1, ancho: 0.2, alto: 0.1 }];
+  const grown = resizePlacements(items, 0, 0.2, 0);
+  assert.ok(grown[0].ancho > 0.2, "crecer arrastrando debe agrandar el ancho");
+  const shrunk = resizePlacements(items, 0, -1, -1);
+  assert.ok(shrunk[0].ancho >= 0.06 && shrunk[0].alto >= 0.04, "nunca por debajo del tamaño mínimo");
+});
+test("VacationSignWorkspace nunca hardcodea la posición del sello: la coloca a partir de un placement editable en estado", async () => {
+  const source = await readFile("components/vacation-sign-workspace.tsx", "utf8");
+  assert.match(source, /const \[placement, setPlacement\] = useState<Placement>/);
+  assert.match(source, /onPointerDown=\{move\}/);
+  assert.match(source, /onPointerDown=\{resize\}/);
+  assert.match(source, /src="\/api\/perfil\/firma\?tipo=sello"/); // mismo endpoint de evidencia que Documentos
+  assert.match(source, /changePage/); // cambia de página
+});
+test("VacationSignWorkspace verifica versión + hash antes de previsualizar y antes de confirmar, y bloquea si el servidor responde 409", async () => {
+  const source = await readFile("components/vacation-sign-workspace.tsx", "utf8");
+  assert.match(source, /version_esperada: versionActual, archivo_sha256_origen: archivoSha256, placement/);
+  assert.equal([...source.matchAll(/if \(response\.status === 409\) setStale\(true\);/g)].length, 2);
+  assert.match(source, /La papeleta cambió mientras la firmabas/);
+  assert.match(source, /if \(stale\) return/);
+});
+test("el detalle usa el editor interactivo (no un botón de firma fijo) cuando el gerente puede firmar", async () => {
+  const page = await readFile("app/(private)/documentos/vacaciones/[id]/page.tsx", "utf8");
+  assert.match(page, /<VacationSignWorkspace papeletaId=\{row\.id\} versionActual=\{row\.version_actual\} archivoSha256=\{row\.archivo_sha256\}/);
+  assert.doesNotMatch(page, /VacationSignButton/);
+});
+
+test("firmar_papeleta_vacaciones y su handler exigen papeleta_id + versión + SHA-256 de origen coincidentes (verificación explícita de frescura)", async () => {
+  const handlers = await readFile("lib/vacations/handlers.ts", "utf8");
+  assert.match(handlers, /doc\.version_actual !== versionEsperada \|\| doc\.archivo_sha256 !== shaOrigen/);
+  assert.match(handlers, /p_archivo_sha256_origen: shaOrigen/);
+});
+
+function fakeSigningDb(overrides: { estado?: string; version_actual?: number; archivo_sha256?: string; perfil?: { id: string; version: number; sello_path: string } | null } = {}) {
+  const doc = {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", coordinador_id: "coord-1",
+    estado: overrides.estado ?? "REGISTRADO", version_actual: overrides.version_actual ?? 1,
+    archivo_path: "coord-1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.pdf", archivo_sha256: overrides.archivo_sha256 ?? "a".repeat(64),
+  };
+  const perfil = overrides.perfil === undefined ? { id: "perfil-1", version: 1, sello_path: "sellos/gerente-1/v1.png" } : overrides.perfil;
+  return {
+    from(table: string) {
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({ maybeSingle: async () => (table === "perfiles_firma" ? { data: perfil, error: null } : { data: null, error: null }) }),
+            maybeSingle: async () => (table === "papeletas_vacaciones" ? { data: doc, error: null } : { data: null, error: null }),
+          }),
+        }),
+      };
+    },
+  } as unknown as SupabaseClient;
+}
+const validPlacement = { pagina: 1, x: 0.2, y: 0.2, ancho: 0.2, alto: 0.1 };
+test("makePreviewSignPapeletaHandler: rechaza con 409 si el hash de origen enviado ya no coincide con el vigente (nunca compone en silencio una versión vieja)", async () => {
+  const handler = makePreviewSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeSigningDb({ archivo_sha256: "b".repeat(64) }) });
+  const response = await handler(new Request("https://x.test/preview", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1, archivo_sha256_origen: "a".repeat(64), placement: validPlacement }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(response.status, 409);
+  const data = await response.json();
+  assert.match(data.error, /cambió mientras firmabas/);
+});
+test("makePreviewSignPapeletaHandler: rechaza con 409 si la versión ya no es la esperada", async () => {
+  const handler = makePreviewSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeSigningDb({ version_actual: 2 }) });
+  const response = await handler(new Request("https://x.test/preview", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1, archivo_sha256_origen: "a".repeat(64), placement: validPlacement }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(response.status, 409);
+});
+test("makePreviewSignPapeletaHandler: rechaza si la papeleta ya no está pendiente de firma (p.ej. OBSERVADO)", async () => {
+  const handler = makePreviewSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeSigningDb({ estado: "OBSERVADO" }) });
+  const response = await handler(new Request("https://x.test/preview", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1, archivo_sha256_origen: "a".repeat(64), placement: validPlacement }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(response.status, 409);
+});
+test("makePreviewSignPapeletaHandler: exige un perfil de firma activo propio antes de componer", async () => {
+  const handler = makePreviewSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeSigningDb({ perfil: null }) });
+  const response = await handler(new Request("https://x.test/preview", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1, archivo_sha256_origen: "a".repeat(64), placement: validPlacement }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(response.status, 400);
+});
+test("makeSignPapeletaHandler y makePreviewSignPapeletaHandler rechazan un placement fuera de los límites de la página o con campos faltantes", async () => {
+  const cases: unknown[] = [
+    { pagina: 0, x: 0, y: 0, ancho: 0.2, alto: 0.1 }, // página inválida
+    { pagina: 1, x: 0.9, y: 0, ancho: 0.5, alto: 0.1 }, // se sale por la derecha
+    { pagina: 1, x: 0, y: 0.95, ancho: 0.2, alto: 0.5 }, // se sale por abajo
+    { pagina: 1, x: 0, y: 0, ancho: 0, alto: 0.1 }, // ancho cero
+    { pagina: 1, x: 0, y: 0 }, // faltan ancho/alto
+    "no-es-un-objeto",
+  ];
+  for (const placement of cases) {
+    const handler = makeSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeSigningDb() });
+    const response = await handler(new Request("https://x.test/firmar", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1, archivo_sha256_origen: "a".repeat(64), placement }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    assert.equal(response.status, 400, `debe rechazar: ${JSON.stringify(placement)}`);
+  }
+});
+test("makeSignPapeletaHandler: rechaza con 409 si el hash de origen ya no coincide, antes de intentar componer o subir nada", async () => {
+  const db = fakeSigningDb({ archivo_sha256: "b".repeat(64) });
+  const handler = makeSignPapeletaHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => db });
+  const response = await handler(new Request("https://x.test/firmar", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 1, archivo_sha256_origen: "a".repeat(64), placement: validPlacement }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(response.status, 409);
+  const data = await response.json();
+  assert.match(data.error, /cambió mientras firmabas/);
+});
+
+test("202609200001: la cola de limpieza pendiente se inserta DENTRO de la misma transacción que borra las filas (nunca queda huérfano sin rastro)", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /create table private\.papeleta_storage_borrado_pendiente/);
+  const fnStart = sql.indexOf("create function private.admin_eliminar_papeletas_prueba");
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  const body = sql.slice(fnStart, fnEnd);
+  const insertPending = body.indexOf("insert into private.papeleta_storage_borrado_pendiente");
+  const deleteVersiones = body.indexOf("delete from public.papeletas_vacaciones_versiones");
+  assert.ok(insertPending > -1 && insertPending < deleteVersiones, "la cola debe llenarse ANTES de borrar las versiones, dentro de la misma transacción");
+});
+test("202609200001: admin_confirmar_borrado_storage y admin_registrar_intento_borrado_storage son admin-only y nunca inventan qué se borró", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /create function private\.admin_confirmar_borrado_storage\(p_paths text\[\]\)/);
+  assert.match(sql, /delete from private\.papeleta_storage_borrado_pendiente where archivo_path=any\(p_paths\);/);
+  assert.match(sql, /create function private\.admin_registrar_intento_borrado_storage\(p_paths text\[\],p_error text\)/);
+  assert.match(sql, /set intentos=intentos\+1,ultimo_intento_at=now\(\),ultimo_error=left\(coalesce\(p_error,''\),500\)/);
+  const adminCheckCount = [...sql.matchAll(/raise exception 'Solo administradores' using errcode='42501';/g)].length;
+  assert.ok(adminCheckCount >= 5, "cada RPC nueva de esta migración (marcar, eliminar, confirmar, registrar intento, listar pendientes) valida admin explícitamente");
+});
+test("202609200001: nueva política admite que admin borre huérfanos de Storage (el propietario de la carpeta ya no es requisito), pero nunca un archivo todavía referenciado", async () => {
+  const sql = await readFile("supabase/migrations/202609200001_papeletas_firma.sql", "utf8");
+  assert.match(sql, /create policy papeletas_storage_delete_admin_huerfanos on storage\.objects for delete to authenticated/);
+  assert.match(sql, /using\(bucket_id='papeletas-vacaciones' and public\.is_admin\(\)/);
+  assert.match(sql, /not exists\(select 1 from public\.papeletas_vacaciones p where p\.archivo_path=name\)/);
+  assert.match(sql, /not exists\(select 1 from public\.papeletas_vacaciones_versiones v where v\.archivo_path=name\)\)\$p\$;/);
+});
+test("el handler de borrado de pruebas solo confirma en la cola las rutas que Storage realmente reportó, nunca por adelantado", async () => {
+  const source = await readFile("lib/vacations/handlers.ts", "utf8");
+  assert.match(source, /const confirmed = paths\.filter\(\(path\) => removedNames\.has\(path\)\);/);
+  assert.match(source, /const pending = paths\.filter\(\(path\) => !removedNames\.has\(path\)\);/);
+  assert.match(source, /if \(confirmed\.length\) await db\.rpc\("admin_confirmar_borrado_storage"/);
+  assert.match(source, /if \(pending\.length\) await db\.rpc\("admin_registrar_intento_borrado_storage"/);
 });
