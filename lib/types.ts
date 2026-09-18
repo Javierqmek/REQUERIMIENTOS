@@ -8,6 +8,7 @@ export interface Personal {
 }
 export interface Cliente { id: string; nombre: string; activo: boolean }
 export interface Unidad { id: string; cliente_id: string; nombre: string; activo: boolean }
+export interface Provincia { id: string; nombre: string; activo: boolean }
 export interface Prenda {
   id: string; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string;
   precio: number; cliente: string; cantidad: number; genero: import("@/lib/garments/gender").GarmentGender; activo: boolean;

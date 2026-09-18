@@ -7,6 +7,7 @@ const columns = {
   clientes: "id,nombre,activo",
   unidades: "id,cliente_id,nombre,activo",
   prendas: "id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,genero,activo",
+  provincias: "id,nombre,activo",
 };
 
 // Read every page of the requested active catalog, never unrelated agents or garments.

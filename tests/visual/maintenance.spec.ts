@@ -22,6 +22,25 @@ test("crea, edita y elimina un cliente sin relaciones",async({page})=>{
   await expect(page.getByText("Registro eliminado definitivamente")).toBeVisible();
 });
 
+test("provincias: admin lista, busca, crea, edita, desactiva y reactiva; sin borrado físico",async({page})=>{
+  await page.goto("/admin/mantenimiento");await page.getByRole("tab",{name:"Provincias"}).click();
+  await expect(page.getByText("Lima",{exact:true})).toBeVisible();await expect(page.getByText("Arequipa",{exact:true})).toBeVisible();
+  await page.getByLabel("Buscar en provincias").fill("Arequipa");
+  await expect(page.getByText("Lima",{exact:true})).toHaveCount(0);await expect(page.getByText("Arequipa",{exact:true})).toBeVisible();
+  await page.getByLabel("Buscar en provincias").fill("");
+  await page.getByRole("button",{name:"Nuevo"}).click();await page.getByLabel("Nombre de la provincia").fill("Puno");
+  await page.getByRole("button",{name:"Crear registro"}).click();
+  await expect(page.getByText("Provincia creada correctamente")).toBeVisible();await expect(page.getByText("Puno",{exact:true})).toBeVisible();
+  await page.getByLabel("Acciones de Puno").click();await page.getByRole("menuitem",{name:"Editar"}).click();
+  await page.getByLabel("Nombre de la provincia").fill("Puno Editado");await page.getByRole("button",{name:"Guardar cambios"}).click();
+  await expect(page.getByText("Puno Editado",{exact:true})).toBeVisible();
+  await page.getByLabel("Acciones de Puno Editado").click();await expect(page.getByRole("menuitem",{name:"Eliminar definitivamente"})).toHaveCount(0);
+  await page.getByRole("menuitem",{name:"Desactivar"}).click();await page.getByRole("button",{name:"Sí, desactivar"}).click();
+  await expect(page.getByText("Registro desactivado correctamente")).toBeVisible();
+  await page.getByLabel("Acciones de Puno Editado").click();await page.getByRole("menuitem",{name:"Activar"}).click();await page.getByRole("button",{name:"Sí, activar"}).click();
+  await expect(page.getByText("Registro activado correctamente")).toBeVisible();
+});
+
 test("formularios de unidad, personal y prenda son compactos y completos",async({page})=>{
   await page.setViewportSize({width:320,height:700});await page.goto("/admin/mantenimiento");
   await page.getByRole("tab",{name:"Unidades"}).click();await page.getByRole("button",{name:"Nuevo"}).click();await expect(page.getByLabel("Nombre de unidad / sede")).toBeVisible();await page.getByLabel("Cerrar formulario").click();

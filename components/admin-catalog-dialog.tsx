@@ -7,7 +7,7 @@ import type { CatalogKind } from "@/lib/admin/maintenance";
 type Row = Record<string, unknown> & { id: string; activo: boolean };
 type ClientOption = { id: string; nombre: string; activo: boolean };
 const names: Record<CatalogKind,string> = {
-  clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda",
+  clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda", provincias:"provincia",
 };
 function text(row:Row|null,key:string){return row?.[key]===undefined||row?.[key]===null?"":String(row[key])}
 function Field({label,name,defaultValue="",maxLength,type="text",readOnly=false,min,max,step}:{label:string;name:string;defaultValue?:string;maxLength?:number;type?:string;readOnly?:boolean;min?:number;max?:number;step?:number}){
@@ -35,6 +35,7 @@ export function AdminCatalogDialog({catalog,row,clients,busy,error,onCancel,onSu
       <form onSubmit={submit}>
         <div className="grid max-h-[65vh] gap-4 overflow-y-auto px-5 py-5 sm:grid-cols-2">
           {catalog==="clientes"&&<div className="sm:col-span-2"><Field label="Nombre del cliente" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>}
+          {catalog==="provincias"&&<div className="sm:col-span-2"><Field label="Nombre de la provincia" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>}
           {catalog==="unidades"&&<>
             <label><span className="label">Cliente</span><select className="input" name="cliente_id" defaultValue={currentClientId} disabled={editing&&row?.puede_cambiar_cliente===false} required><option value="">Selecciona un cliente</option>{selectableClients.map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select>{editing&&row?.puede_cambiar_cliente===false&&<span className="mt-1.5 block text-xs text-[var(--text-secondary)]">No puede cambiar porque la unidad ya fue utilizada.</span>}{editing&&row?.puede_cambiar_cliente===false&&<input type="hidden" name="cliente_id" value={currentClientId}/>}</label>
             <Field label="Nombre de unidad / sede" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/>

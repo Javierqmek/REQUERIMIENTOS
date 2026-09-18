@@ -40,12 +40,13 @@ const initialCatalogRows = {
   unidades: options.unidades.map((row,index)=>({...row,clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
   prendas: editGarments.map((row,index)=>({...row,activo:index!==1})),
+  provincias: [{id:"aa100000-0000-4000-8000-000000000001",nombre:"Lima",activo:true},{id:"aa100000-0000-4000-8000-000000000002",nombre:"Arequipa",activo:true}],
 };
 const recordsByProject=new Map<string,typeof initialRecords>();
 function recordsFor(project:string){let rows=recordsByProject.get(project);if(!rows){rows=initialRecords.map(row=>({...row}));recordsByProject.set(project,rows)}return rows}
 type CatalogRows=typeof initialCatalogRows;
 const catalogRowsByProject=new Map<string,CatalogRows>();
-function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row}))};catalogRowsByProject.set(project,rows)}return rows}
+function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row})),provincias:initialCatalogRows.provincias.map(row=>({...row}))};catalogRowsByProject.set(project,rows)}return rows}
 let catalogSequence=100;
 function catalogId(){catalogSequence++;return "99000000-0000-4000-8000-"+String(catalogSequence).padStart(12,"0")}
 type VisualFilters = Partial<AdminFilters & RequirementFilters>;
@@ -75,7 +76,7 @@ async function main() {
       builder.onResolve({ filter: /^pdfjs-dist(?:\/legacy\/build\/pdf\.mjs)?$/ }, () => ({ path: "pdfjs-dist", namespace: "test-adapter" }));
       builder.onResolve({ filter: /lib\/supabase\/client$/ }, () => ({ path: "supabase", namespace: "test-adapter" }));
       builder.onLoad({ filter: /.*/, namespace: "test-adapter" }, args => ({
-        contents: args.path === "pdfjs-dist" ? 'export const GlobalWorkerOptions={workerSrc:"/test-worker.mjs"};export const getDocument=()=>({promise:Promise.resolve({getPage:async()=>({getViewport:({scale})=>({width:595*scale,height:842*scale}),render:()=>({promise:Promise.resolve()})})})});' :
+        contents: args.path === "pdfjs-dist" ? 'export const GlobalWorkerOptions={workerSrc:"/test-worker.mjs"};export const getDocument=()=>({promise:Promise.resolve({numPages:1,getPage:async()=>({getViewport:({scale})=>({width:595*scale,height:842*scale}),render:()=>({promise:Promise.resolve()})})})});' :
           args.path === "next/link" ? 'import React from "react"; export default function Link(p){return React.createElement("a",p)}' :
           args.path === "next/image" ? 'import React from "react"; export default function Image({fill,unoptimized,...p}){void fill;void unoptimized;return React.createElement("img",p)}' :
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
@@ -83,8 +84,9 @@ async function main() {
             clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true }],
             unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", activo: true }],
             prendas: editGarments,
-          })}; const agents=[{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA AGENTE OPERATIVA",dni:"12345678",cargo:"AGENTE",activo:true}];
-          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name){const result=name==="buscar_personal"?{data:agents,error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(catalogs[table]||[])];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
+            provincias: [{ id: "aa100000-0000-4000-8000-000000000001", nombre: "AREQUIPA", activo: true }, { id: "aa100000-0000-4000-8000-000000000002", nombre: "CUSCO", activo: true }],
+          })}; const agents=[{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA AGENTE OPERATIVA",dni:"12345678",cargo:"AGENTE",activo:true},{id:"22000000-0000-4000-8000-000000000002",codigo_personal:"PER-002",nombre:"CARLOS REEMPLAZO OPERATIVO",dni:"87654321",cargo:"AGENTE",activo:true}];
+          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name){const result=name==="buscar_personal"?{data:agents,error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...((table==="provincias"&&new URLSearchParams(window.location.search).get("sinProvincias")==="1")?[]:(catalogs[table]||[]))];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
       }));
     } }],
   });
@@ -100,6 +102,10 @@ async function main() {
       if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/preview") && req.method === "POST") { res.writeHead(200, { "Content-Type": "application/pdf", "Cache-Control":"private, no-store" }); res.end(testPdfBytes); return; }
       if (url.pathname === "/api/perfil/firma") { res.writeHead(200, { "Content-Type": "image/png" }); res.end(testStamp.bytes); return; }
       if (url.pathname.startsWith("/api/documentos/") && url.pathname.endsWith("/accion") && req.method === "POST") { sendJson({ok:true}); return; }
+      if (url.pathname === "/api/documentos/vacaciones" && req.method === "POST") {
+        for await (const chunk of req) void chunk; // drena el multipart sin parsearlo: solo se prueba la UI
+        await delay(300); sendJson({ id: "aa000000-0000-4000-8000-000000000099" }, 201); return;
+      }
       if (url.pathname === "/api/admin/requerimientos/eliminar" && req.method === "DELETE") {
         let body=""; for await(const chunk of req) body+=chunk.toString();
         const ids=(JSON.parse(body).ids??[]) as string[];
@@ -118,6 +124,7 @@ async function main() {
           if(req.method==="DELETE"){const index=rows.findIndex(item=>item.id===input.id);if(index<0){sendJson({error:"Registro no encontrado"},404);return;}rows.splice(index,1);sendJson({id:input.id,catalogo:kind});return;}
           const values=input.valores as Record<string,unknown>;
           if(kind==="clientes"&&rows.some(row=>String(row.nombre).toLowerCase()===String(values.nombre).toLowerCase()&&row.id!==input.id)){sendJson({error:"Ya existe un cliente con ese nombre"},409);return;}
+          if(kind==="provincias"&&rows.some(row=>String(row.nombre).trim().toLowerCase()===String(values.nombre).trim().toLowerCase()&&row.id!==input.id)){sendJson({error:"Ya existe una provincia con ese nombre"},409);return;}
           let row=rows.find(item=>item.id===input.id);
           if(!row){row={id:catalogId(),activo:true};rows.push(row);}
           Object.assign(row,values);

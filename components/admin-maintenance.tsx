@@ -8,12 +8,15 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Toast } from "@/components/ui/toast";
 import type { CatalogKind,CatalogResult } from "@/lib/admin/maintenance";
 
-const catalogs:{id:CatalogKind;label:string}[]=[{id:"clientes",label:"Clientes"},{id:"unidades",label:"Unidades"},{id:"personal",label:"Personal"},{id:"prendas",label:"Prendas"}];
+const catalogs:{id:CatalogKind;label:string}[]=[{id:"clientes",label:"Clientes"},{id:"unidades",label:"Unidades"},{id:"personal",label:"Personal"},{id:"prendas",label:"Prendas"},{id:"provincias",label:"Provincias"}];
 type Client={id:string;nombre:string;activo:boolean};
 type Row=Record<string,unknown>&{id:string;activo:boolean;puede_eliminar?:boolean;puede_cambiar_cliente?:boolean};
 type PendingAction={kind:"toggle"|"delete";row:Row};
 const empty:CatalogResult={rows:[],total:0,page:1,pageSize:50};
-const singular:Record<CatalogKind,string>={clientes:"cliente",unidades:"unidad",personal:"persona",prendas:"prenda"};
+const singular:Record<CatalogKind,string>={clientes:"cliente",unidades:"unidad",personal:"persona",prendas:"prenda",provincias:"provincia"};
+// Concordancia de género del sustantivo singular ("creado"/"creada"): antes solo existía la
+// forma masculina y "unidad/persona/prenda" (femeninos) ya la mostraban mal; se corrige aquí.
+const genero:Record<CatalogKind,"o"|"a"> = {clientes:"o",unidades:"a",personal:"a",prendas:"a",provincias:"a"};
 function value(row:Row,key:string){const result=row[key];return result===null||result===undefined||result===""?"—":String(result)}
 function recordName(catalog:CatalogKind,row:Row){return catalog==="prendas"?value(row,"nombre_prenda"):value(row,"nombre")}
 
@@ -42,14 +45,14 @@ export function AdminMaintenance({clients}:{clients:Client[]}){
   function syncClient(row:Row,remove=false){if(catalog!=="clientes")return;setClientOptions(current=>remove?current.filter(item=>item.id!==row.id):[...current.filter(item=>item.id!==row.id),{id:row.id,nombre:value(row,"nombre"),activo:row.activo}].sort((a,b)=>a.nombre.localeCompare(b.nombre,"es")))}
   async function save(values:Record<string,unknown>){
     if(!editor||busy)return;setBusy(true);setDialogError("");
-    try{const editing=Boolean(editor.row);const response=await fetch("/api/admin/catalogos",{method:editing?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({catalogo:catalog,...(editing?{id:editor.row?.id}:{}),valores:values})});const data=await response.json();if(!response.ok)throw new Error(data.error);syncClient(data.row as Row);setEditor(null);setToast(singular[catalog][0].toUpperCase()+singular[catalog].slice(1)+(editing?" actualizado correctamente":" creado correctamente"));await load(result.page);}catch(e){setDialogError(e instanceof Error?e.message:"No se pudo guardar el registro.");}finally{setBusy(false)}
+    try{const editing=Boolean(editor.row);const response=await fetch("/api/admin/catalogos",{method:editing?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({catalogo:catalog,...(editing?{id:editor.row?.id}:{}),valores:values})});const data=await response.json();if(!response.ok)throw new Error(data.error);syncClient(data.row as Row);setEditor(null);setToast(singular[catalog][0].toUpperCase()+singular[catalog].slice(1)+" "+(editing?"actualizad":"cread")+genero[catalog]+" correctamente");await load(result.page);}catch(e){setDialogError(e instanceof Error?e.message:"No se pudo guardar el registro.");}finally{setBusy(false)}
   }
   async function confirm(){
     if(!pending||busy)return;setBusy(true);setError("");
     try{const deleting=pending.kind==="delete";const response=await fetch("/api/admin/catalogos",{method:deleting?"DELETE":"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(deleting?{catalogo:catalog,id:pending.row.id}:{catalogo:catalog,id:pending.row.id,activo:!pending.row.activo})});const data=await response.json();if(!response.ok)throw new Error(data.error);if(deleting)syncClient(pending.row,true);else syncClient(data as Row);setPending(null);setToast(deleting?"Registro eliminado definitivamente":"Registro "+((data as Row).activo?"activado":"desactivado")+" correctamente");await load(result.page);}catch(e){setError(e instanceof Error?e.message:"No se pudo completar la operación.");setPending(null);}finally{setBusy(false)}
   }
   const rows=result.rows as Row[],pages=Math.max(1,Math.ceil(result.total/result.pageSize));
-  const fields=catalog==="clientes"?["nombre"]:catalog==="unidades"?["nombre","clientes"]:catalog==="personal"?["codigo_personal","nombre","dni","cargo"]:["codigo_prenda","nombre_prenda","cliente","genero","cantidad","precio"];
+  const fields=catalog==="clientes"||catalog==="provincias"?["nombre"]:catalog==="unidades"?["nombre","clientes"]:catalog==="personal"?["codigo_personal","nombre","dni","cargo"]:["codigo_prenda","nombre_prenda","cliente","genero","cantidad","precio"];
   const label:Record<string,string>={nombre:"Nombre",clientes:"Cliente",codigo_personal:"Código",dni:"DNI",cargo:"Cargo",codigo_prenda:"Código",nombre_prenda:"Prenda",cliente:"Cliente",genero:"Género",cantidad:"Cant.",precio:"Precio"};
   return <section className="min-w-0"><AdminSectionNav/><header className="page-header"><p className="page-eyebrow">Administración</p><h1 className="page-title">Mantenimiento</h1><p className="page-description">Gestiona catálogos operativos sin alterar los requerimientos históricos.</p></header>
     <div className="card p-4 sm:p-5">

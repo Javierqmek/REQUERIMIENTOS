@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas"] as const;
+export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas", "provincias"] as const;
 export type CatalogKind = typeof CATALOG_KINDS[number];
 export type CatalogResult = { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number };
 const querySchema = z.object({
@@ -51,17 +51,20 @@ const garmentValues = z.object({
   cliente_id: z.string().uuid("Selecciona un cliente válido."),
   genero: z.enum(["HOMBRE", "MUJER", "AMBOS"]),
 }).strict();
+const provinceValues = z.object({ nombre: shortText(200, "El nombre") }).strict();
 const createSchemas = [
   z.object({ catalogo: z.literal("clientes"), valores: clientValues }).strict(),
   z.object({ catalogo: z.literal("unidades"), valores: unitValues }).strict(),
   z.object({ catalogo: z.literal("personal"), valores: personValues }).strict(),
   z.object({ catalogo: z.literal("prendas"), valores: garmentValues }).strict(),
+  z.object({ catalogo: z.literal("provincias"), valores: provinceValues }).strict(),
 ] as const;
 const updateSchemas = [
   z.object({ catalogo: z.literal("clientes"), id: z.string().uuid(), valores: clientValues }).strict(),
   z.object({ catalogo: z.literal("unidades"), id: z.string().uuid(), valores: unitValues }).strict(),
   z.object({ catalogo: z.literal("personal"), id: z.string().uuid(), valores: personValues }).strict(),
   z.object({ catalogo: z.literal("prendas"), id: z.string().uuid(), valores: garmentValues }).strict(),
+  z.object({ catalogo: z.literal("provincias"), id: z.string().uuid(), valores: provinceValues }).strict(),
 ] as const;
 export const catalogCreateSchema = z.discriminatedUnion("catalogo", createSchemas);
 export const catalogUpdateSchema = z.discriminatedUnion("catalogo", updateSchemas);
