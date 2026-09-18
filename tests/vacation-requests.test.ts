@@ -11,8 +11,9 @@ import { isValidRequestId, papeletaCorrectionStoragePath, papeletaStoragePath } 
 import { makeDeleteTestPapeletasHandler, makeMarkTestPapeletaHandler, makePreviewSignPapeletaHandler, makeRegisterPapeletaHandler, makeRetryStorageCleanupHandler, makeSignPapeletaHandler } from "../lib/vacations/handlers";
 import { movePlacements, resizePlacements } from "../lib/documents/placement-client";
 import { canCorrect, canObserve, canReview, canSign } from "../lib/vacations/review";
-import { PAPELETA_DETAIL_SELECT, PAPELETA_LIST_SELECT, papeletaEstadoLabel, papeletaVersionTipoLabel } from "../lib/vacations/types";
+import { PAPELETA_DETAIL_SELECT, papeletaEstadoLabel, papeletaVersionTipoLabel } from "../lib/vacations/types";
 import { allowTestPapeletaDeletion } from "../lib/vacations/config";
+import { EMPTY_PAPELETA_FILTERS, PAPELETA_ESTADOS, papeletaFilterParams, papeletaFiltersSchema, papeletaRpcArgs } from "../lib/vacations/list-filters";
 import { createSignedPdf } from "../lib/documents/pdf";
 import { CATALOG_KINDS, catalogCreateSchema, catalogDeleteSchema, catalogUpdateSchema } from "../lib/admin/maintenance";
 
@@ -472,8 +473,7 @@ test("el listado nunca es estático ni cachea: siempre consulta en el momento", 
 });
 test("el listado nunca oculta un error de consulta como si fuera una lista vacía", async () => {
   const source = await readFile("app/(private)/documentos/vacaciones/page.tsx", "utf8");
-  assert.match(source, /const \{ data, error \} = await query;/);
-  assert.match(source, /error \? <Alert kind="error">/);
+  assert.match(source, /listError \|\| !listResult \? <Alert kind="error">/);
 });
 
 // --- Diseño de estados y permisos (lógica pura) ---
@@ -634,16 +634,15 @@ test("la corrección limpia el archivo subido si la RPC falla, sin tocar version
 // `const { data } = await query` no revisaba `error`, la UI mostraba "sin registros" en vez
 // del error real, para cualquier rol (coordinador, admin o gerente).
 // ============================================================================
-test("PAPELETA_LIST_SELECT y PAPELETA_DETAIL_SELECT desambiguan unidades con la FK simple explícita", () => {
-  // Debe existir la relación calificada...
-  assert.match(PAPELETA_LIST_SELECT, /unidades!papeletas_vacaciones_unidad_id_fkey\(nombre\)/);
+test("PAPELETA_DETAIL_SELECT desambigua unidades con la FK simple explícita", () => {
   assert.match(PAPELETA_DETAIL_SELECT, /unidades!papeletas_vacaciones_unidad_id_fkey\(id,nombre\)/);
-  // ...y no debe quedar ningún embed de "unidades" sin calificar en ninguno de los dos selects
-  // (una futura edición no debe reintroducir la ambigüedad sin darse cuenta).
-  for (const select of [PAPELETA_LIST_SELECT, PAPELETA_DETAIL_SELECT]) {
-    const bareUnidades = select.match(/(?<![\w!])unidades\(/g);
-    assert.equal(bareUnidades, null, `no debe quedar "unidades(" sin calificar en: ${select}`);
-  }
+  const bareUnidades = PAPELETA_DETAIL_SELECT.match(/(?<![\w!])unidades\(/g);
+  assert.equal(bareUnidades, null, `no debe quedar "unidades(" sin calificar en: ${PAPELETA_DETAIL_SELECT}`);
+});
+test("el listado ya no arma su propio embed ambiguo: la resolución de nombres vive en listar_papeletas_vacaciones_filtradas (joins explícitos por columna, sin PostgREST embed)", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  assert.match(sql, /left join public\.unidades u on u\.id=p\.unidad_id/);
+  assert.match(sql, /left join public\.clientes c on c\.id=p\.cliente_id/);
 });
 test("clientes no necesita FK explícita: papeletas_vacaciones solo tiene una relación hacia clientes", async () => {
   const sql = await readFile("supabase/migrations/202609170001_papeletas_vacaciones.sql", "utf8");
@@ -658,8 +657,7 @@ test("el mismo patrón de FK compuesta ya existía en requerimientos: la ambigü
 });
 test("el listado nunca vuelve a ocultar un error de consulta (ver corrección previa) y sigue siendo dinámico", async () => {
   const source = await readFile("app/(private)/documentos/vacaciones/page.tsx", "utf8");
-  assert.match(source, /const \{ data, error \} = await query;/);
-  assert.match(source, /error \? <Alert kind="error">/);
+  assert.match(source, /listError \|\| !listResult \? <Alert kind="error">/);
   assert.match(source, /export const dynamic = "force-dynamic";/);
 });
 
@@ -682,8 +680,7 @@ test("PAPELETA_DETAIL_SELECT incluye los metadatos de firma y el hint de FK del 
   assert.match(PAPELETA_DETAIL_SELECT, /firmado_por,firmado_at,firma_perfil_version/);
   assert.match(PAPELETA_DETAIL_SELECT, /firmante:profiles!papeletas_vacaciones_firmado_por_fkey\(nombre\)/);
 });
-test("PAPELETA_LIST_SELECT y PAPELETA_DETAIL_SELECT exponen es_prueba para el marcado explícito admin", () => {
-  assert.match(PAPELETA_LIST_SELECT, /(?:^|,)es_prueba(?:,|$)/);
+test("PAPELETA_DETAIL_SELECT expone es_prueba para el marcado explícito admin", () => {
   assert.match(PAPELETA_DETAIL_SELECT, /(?:^|,)es_prueba,firmado_por/);
 });
 
@@ -1131,4 +1128,167 @@ test("el handler de borrado de pruebas solo confirma en la cola las rutas que St
   assert.match(source, /const pending = paths\.filter\(\(path\) => !removedNames\.has\(path\)\);/);
   assert.match(source, /if \(confirmed\.length\) await db\.rpc\("admin_confirmar_borrado_storage"/);
   assert.match(source, /if \(pending\.length\) await db\.rpc\("admin_registrar_intento_borrado_storage"/);
+});
+
+// ============================================================================
+// Mejora puntual: tarjetas compactas para los tres roles, filtros combinables con paginación en
+// servidor (misma RPC para coordinador y admin/gerente), y borrado de prueba extendido a FIRMADO
+// y CONFORME histórico cuando es_prueba=true, con auditoría que sobrevive a la papeleta.
+// ============================================================================
+
+// --- LISTADOS: tarjetas compactas ---
+test("VacationPapeletaList: la tarjeta NUNCA muestra físicas, venta, reemplazo ni provincia (eso vive solo en el detalle)", async () => {
+  const source = await readFile("components/vacation-papeleta-list.tsx", "utf8");
+  assert.doesNotMatch(source, /[Ff]ísicas:/);
+  assert.doesNotMatch(source, /[Vv]enta:/);
+  assert.doesNotMatch(source, /[Rr]eemplazo:/);
+  assert.doesNotMatch(source, /[Pp]rovincia:/);
+  const executableLines = source.split("\n").filter(line => !line.trim().startsWith("//")).join("\n");
+  assert.doesNotMatch(executableLines, /fisicas_fecha_inicio|venta_fecha_inicio|row\.reemplazo/);
+});
+test("VacationPapeletaList: muestra colaborador, código, estado, fecha de registro, cliente y unidad para los tres roles", async () => {
+  const source = await readFile("components/vacation-papeleta-list.tsx", "utf8");
+  assert.match(source, /row\.colaborador_nombre/);
+  assert.match(source, /row\.colaborador_codigo/);
+  assert.match(source, /PapeletaEstadoBadge estado=\{row\.estado\}/);
+  assert.match(source, /Registrado: /);
+  assert.match(source, /row\.clientes\?\.nombre/);
+  assert.match(source, /row\.unidades\?\.nombre/);
+  assert.match(source, /Ver detalle/);
+});
+test("VacationPapeletaList: Coordinador NO ve la columna Coordinador en su propia tarjeta; admin/gerente sí", async () => {
+  const source = await readFile("components/vacation-papeleta-list.tsx", "utf8");
+  assert.match(source, /role !== "coordinador" && row\.profiles\?\.nombre/);
+});
+test("VacationPapeletaList: solo el gerente ve el botón Firmar, y solo cuando la papeleta está pendiente de firma (REGISTRADO)", async () => {
+  const source = await readFile("components/vacation-papeleta-list.tsx", "utf8");
+  assert.match(source, /const puedeFirmar = role === "gerente" && row\.estado === "REGISTRADO";/);
+});
+test("el detalle sigue mostrando toda la información retirada de la tarjeta: físicas, venta, reemplazo, provincia, cliente, unidad, coordinador", async () => {
+  const source = await readFile("app/(private)/documentos/vacaciones/[id]/page.tsx", "utf8");
+  for (const label of ["Vacaciones físicas", "Venta de vacaciones", "Reemplazo", "Provincia", "Cliente", "Unidad", "Coordinador"]) {
+    assert.match(source, new RegExp(`\\["${label}"`), `el detalle debe seguir mostrando "${label}"`);
+  }
+  assert.match(source, /<VacationPdfViewer papeletaId=\{row\.id\} \/>/);
+});
+
+// --- FILTROS: esquema, combinación, limpiar, paginación ---
+test("papeletaFiltersSchema acepta y combina búsqueda + cliente + unidad + estado + provincia + fechas", () => {
+  const parsed = papeletaFiltersSchema.parse({ q: "Luz", cliente: "44000000-0000-4000-8000-000000000001", unidad: "", provincia: "", coordinador: "", estado: "FIRMADO", desde: "2026-01-01", hasta: "2026-12-31" });
+  assert.equal(parsed.q, "Luz");
+  assert.equal(parsed.estado, "FIRMADO");
+  assert.equal(parsed.desde, "2026-01-01");
+});
+test("papeletaFiltersSchema rechaza un rango de fechas invertido (desde > hasta)", () => {
+  assert.throws(() => papeletaFiltersSchema.parse({ ...EMPTY_PAPELETA_FILTERS, desde: "2026-06-01", hasta: "2026-01-01" }));
+});
+test("PAPELETA_ESTADOS expone los 4 estados visibles pedidos: Pendiente de firma, Observado, Firmado, Conforme (histórico)", () => {
+  assert.deepEqual(PAPELETA_ESTADOS, ["REGISTRADO", "OBSERVADO", "FIRMADO", "CONFORME"]);
+});
+test("papeletaRpcArgs traduce los filtros vacíos a null (para que la RPC los ignore) y los presentes a su valor", () => {
+  assert.deepEqual(papeletaRpcArgs(EMPTY_PAPELETA_FILTERS), {
+    p_busqueda: null, p_cliente_id: null, p_unidad_id: null, p_provincia_id: null, p_estado: null, p_coordinador_id: null, p_desde: null, p_hasta: null,
+  });
+  const filled = papeletaRpcArgs({ ...EMPTY_PAPELETA_FILTERS, q: "ana", cliente: "c1", estado: "OBSERVADO" });
+  assert.equal(filled.p_busqueda, "ana");
+  assert.equal(filled.p_cliente_id, "c1");
+  assert.equal(filled.p_estado, "OBSERVADO");
+});
+test("papeletaFilterParams solo serializa los filtros con valor, y siempre incluye la página", () => {
+  const params = papeletaFilterParams({ ...EMPTY_PAPELETA_FILTERS, cliente: "c1", estado: "FIRMADO" }, 3);
+  assert.equal(params.get("cliente"), "c1");
+  assert.equal(params.get("estado"), "FIRMADO");
+  assert.equal(params.get("unidad"), null);
+  assert.equal(params.get("page"), "3");
+});
+test("VacationFilters: incluye Limpiar filtros y unidad depende del cliente elegido", async () => {
+  const source = await readFile("components/vacation-filters.tsx", "utf8");
+  assert.match(source, /Limpiar filtros/);
+  assert.match(source, /unidadesDelCliente/);
+  assert.match(source, /options\.unidades\.filter\(u => u\.cliente_id === draft\.cliente\)/);
+  assert.match(source, /if \(key === "cliente"\) next\.unidad = "";/);
+});
+test("la página de listado muestra la cantidad de resultados y paginación (Anterior/Siguiente)", async () => {
+  const source = await readFile("app/(private)/documentos/vacaciones/page.tsx", "utf8");
+  assert.match(source, /\{listResult\.total\} resultado/);
+  assert.match(source, />Anterior</);
+  assert.match(source, />Siguiente</);
+  assert.match(source, /Página \{page\} de \{totalPages\}/);
+});
+test("el listado usa la RPC (backend), nunca trae toda la tabla para filtrar en el navegador", async () => {
+  const source = await readFile("lib/vacations/list-data.ts", "utf8");
+  assert.match(source, /db\.rpc\("listar_papeletas_vacaciones_filtradas"/);
+  assert.match(source, /p_limite: PAPELETAS_PAGE_SIZE, p_offset: \(page - 1\) \* PAPELETAS_PAGE_SIZE/);
+  const page = await readFile("app/(private)/documentos/vacaciones/page.tsx", "utf8");
+  assert.doesNotMatch(page, /\.select\(PAPELETA_LIST_SELECT\)|\.limit\(100\)/);
+});
+test("admin y coordinador reutilizan la MISMA función RPC (no dos implementaciones del motor de filtros)", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  const count = [...sql.matchAll(/create function public\.listar_papeletas_vacaciones_filtradas/g)].length;
+  assert.equal(count, 1, "debe existir una sola función de listado filtrado, reutilizada por todos los roles");
+  assert.match(sql, /where p\.coordinador_id=auth\.uid\(\) or public\.is_admin\(\) or private\.es_gerente\(\)/);
+});
+test("evita N+1: el listado resuelve cliente/unidad/provincia/coordinador con LEFT JOIN dentro de la misma consulta, no fila por fila", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  const fnStart = sql.indexOf("create function public.listar_papeletas_vacaciones_filtradas");
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  const body = sql.slice(fnStart, fnEnd);
+  assert.match(body, /with base as materialized/);
+  assert.match(body, /left join public\.clientes c on c\.id=p\.cliente_id/);
+  assert.match(body, /left join public\.unidades u on u\.id=p\.unidad_id/);
+  assert.match(body, /left join public\.provincias prov on prov\.id=p\.provincia_id/);
+  assert.match(body, /left join public\.profiles pr on pr\.id=p\.coordinador_id/);
+});
+
+// --- BORRADO: FIRMADO/CONFORME también borrables si es_prueba=true; auditoría sobrevive ---
+test("202609210001: admin_eliminar_papeletas_prueba ya NO bloquea ningún estado -- solo es_prueba=true decide", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  const fnStart = sql.lastIndexOf("create or replace function private.admin_eliminar_papeletas_prueba");
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  const body = sql.slice(fnStart, fnEnd);
+  assert.doesNotMatch(body, /estado in \('FIRMADO','CONFORME'\)/);
+  assert.doesNotMatch(body, /estado='FIRMADO'/);
+  assert.match(body, /if exists\(select 1 from public\.papeletas_vacaciones p where p\.id=any\(p_ids\) and not p\.es_prueba\) then/);
+});
+test("202609210001: admin_marcar_papeleta_prueba ya no bloquea FIRMADO/CONFORME: se puede marcar de prueba una papeleta en cualquier estado", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  const fnStart = sql.lastIndexOf("create or replace function private.admin_marcar_papeleta_prueba");
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  const body = sql.slice(fnStart, fnEnd);
+  assert.doesNotMatch(body, /estado in \('FIRMADO','CONFORME'\)/);
+});
+test("202609210001: documento real (es_prueba=false) sigue absolutamente protegido, sin importar su estado", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  assert.match(sql, /if exists\(select 1 from public\.papeletas_vacaciones p where p\.id=any\(p_ids\) and not p\.es_prueba\) then\s*\n\s*raise exception 'Solo se pueden eliminar papeletas marcadas como prueba'/);
+});
+test("202609210001: se mantienen las dos protecciones existentes (flag de private.app_config + solo admin), sin agregar flags nuevos", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  assert.match(sql, /if not coalesce\(\(select habilitado from private\.app_config where clave='allow_test_papeleta_deletion'\),false\) then/);
+  assert.match(sql, /if auth\.uid\(\) is null or not public\.is_admin\(\) then/);
+  assert.doesNotMatch(sql, /allow_test_papeleta_deletion_v2|nueva_bandera/i);
+});
+test("202609210001: la auditoría de eliminación se escribe ANTES de borrar, en la misma transacción, y sobrevive a la papeleta (tabla propia, no papeletas_vacaciones_eventos)", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  assert.match(sql, /create table public\.papeletas_vacaciones_eliminaciones_auditoria/);
+  const fnStart = sql.lastIndexOf("create or replace function private.admin_eliminar_papeletas_prueba");
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  const body = sql.slice(fnStart, fnEnd);
+  const auditIndex = body.indexOf("insert into public.papeletas_vacaciones_eliminaciones_auditoria");
+  const deleteIndex = body.indexOf("delete from public.papeletas_vacaciones where id=any(p_ids)");
+  assert.ok(auditIndex > -1 && auditIndex < deleteIndex, "la auditoría debe insertarse antes del DELETE final");
+  assert.match(body, /estado_al_eliminar,\s*\n\s*version_actual,cantidad_versiones,eliminado_por,motivo/);
+});
+test("202609210001: solo admin puede leer la auditoría de eliminación (RLS)", async () => {
+  const sql = await readFile("supabase/migrations/202609210001_papeletas_filtros_y_prueba_completa.sql", "utf8");
+  assert.match(sql, /create policy papeletas_vacaciones_eliminaciones_auditoria_lectura on public\.papeletas_vacaciones_eliminaciones_auditoria\s*\n\s*for select to authenticated using \(public\.is_admin\(\)\);/);
+});
+test("VacationTestMaintenance: exige escribir la palabra ELIMINAR para confirmar, no basta un clic", async () => {
+  const source = await readFile("components/vacation-test-maintenance.tsx", "utf8");
+  assert.match(source, /const CONFIRM_WORD = "ELIMINAR";/);
+  assert.match(source, /disabled=\{busy \|\| word\.trim\(\)\.toUpperCase\(\) !== CONFIRM_WORD\}/);
+});
+test("la página de mantenimiento ya no excluye FIRMADO del listado de papeletas de prueba", async () => {
+  const source = await readFile("app/(private)/documentos/vacaciones/mantenimiento/page.tsx", "utf8");
+  assert.doesNotMatch(source, /\.neq\("estado", "FIRMADO"\)/);
+  assert.match(source, /\.eq\("es_prueba", true\)/);
 });

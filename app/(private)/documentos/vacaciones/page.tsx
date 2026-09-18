@@ -4,24 +4,32 @@ import { FilePlus2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { DocumentSectionNav } from "@/components/document-section-nav";
-import { VacationRequestList } from "@/components/vacation-request-list";
-import { VacationManagerInbox } from "@/components/vacation-manager-inbox";
+import { VacationPapeletaList } from "@/components/vacation-papeleta-list";
+import { VacationFilters } from "@/components/vacation-filters";
 import { Alert } from "@/components/ui/alert";
-import { PAPELETA_LIST_SELECT, type PapeletaRow } from "@/lib/vacations/types";
+import { getPapeletaList, getPapeletaListOptions } from "@/lib/vacations/list-data";
+import { parsePapeletaQuery } from "@/lib/vacations/list-filters";
 
 // No revalidar/cachear esta página: debe reflejar de inmediato cualquier papeleta recién
 // registrada, observada o corregida, sin depender de un router.refresh() del cliente.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function VacationRequestsPage() {
+export default async function VacationRequestsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/documentos");
   const db = await createClient();
-  let query = db.from("papeletas_vacaciones").select(PAPELETA_LIST_SELECT).order("created_at", { ascending: false }).limit(100);
-  // admin y gerente revisan de todos; coordinador solo ve las propias (ver RLS en la migración).
-  if (profile.role === "coordinador") query = query.eq("coordinador_id", profile.id);
-  const { data, error } = await query;
+  const params = new URLSearchParams(Object.entries(await searchParams).flatMap(([k, v]) => v == null ? [] : [[k, Array.isArray(v) ? v[0] : v] as [string, string]]));
+  const { filters, page } = parsePapeletaQuery(params);
+
+  let listResult, listError: unknown = null, options;
+  try {
+    [listResult, options] = await Promise.all([getPapeletaList(db, filters, page), getPapeletaListOptions(db)]);
+  } catch (error) {
+    listError = error;
+    options = { clientes: [], unidades: [], provincias: [], coordinadores: [] };
+  }
+  const totalPages = listResult ? Math.max(1, Math.ceil(listResult.total / listResult.pageSize)) : 1;
 
   return <section className="mx-auto max-w-5xl">
     <DocumentSectionNav role={profile.role} />
@@ -33,13 +41,21 @@ export default async function VacationRequestsPage() {
       </div>
       {profile.role === "coordinador" && <Link href="/documentos/vacaciones/nueva" className="btn btn-primary"><FilePlus2 size={17} />Registrar papeleta</Link>}
     </header>
+
+    <VacationFilters initial={filters} options={options} showCoordinador={profile.role !== "coordinador"} />
+
     {/* Nunca se oculta un error de consulta como si fuera "sin registros": una lista vacía por
         falla silenciosa es indistinguible de "no hay papeletas" para quien la mira. */}
-    {error ? <Alert kind="error">No pudimos consultar las papeletas de vacaciones. Intenta recargar la página.</Alert>
-      // El gerente ve la bandeja compacta pedida por el requerimiento (colaborador, estado,
-      // fecha, coordinador, cliente, unidad + Ver detalle/Firmar). Coordinador y admin conservan
-      // la lista con más contexto, que ya tenían y siguen necesitando.
-      : profile.role === "gerente" ? <VacationManagerInbox rows={(data || []) as unknown as PapeletaRow[]} />
-      : <VacationRequestList rows={(data || []) as unknown as PapeletaRow[]} showCoordinador={profile.role !== "coordinador"} />}
+    {listError || !listResult ? <Alert kind="error">No pudimos consultar las papeletas de vacaciones. Intenta recargar la página.</Alert> : <>
+      <p className="mb-2.5 text-xs font-medium text-[#607089]">{listResult.total} resultado{listResult.total === 1 ? "" : "s"}</p>
+      <VacationPapeletaList rows={listResult.rows} role={profile.role as "coordinador" | "admin" | "gerente"} />
+      {listResult.total > 0 && <nav className="mt-4 flex items-center justify-between gap-3" aria-label="Paginación">
+        <Link aria-disabled={page <= 1} className={`btn btn-secondary px-3 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+          href={`?${new URLSearchParams({ ...Object.fromEntries(params), page: String(page - 1) })}`}>Anterior</Link>
+        <span className="text-xs font-medium text-[#607089]">Página {page} de {totalPages}</span>
+        <Link aria-disabled={page >= totalPages} className={`btn btn-secondary px-3 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+          href={`?${new URLSearchParams({ ...Object.fromEntries(params), page: String(page + 1) })}`}>Siguiente</Link>
+      </nav>}
+    </>}
   </section>;
 }

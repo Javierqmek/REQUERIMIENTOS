@@ -24,17 +24,19 @@ for (const [width, height] of responsiveViewports) test(`Mis papeletas de vacaci
   await page.screenshot({ path: `.qa/vacations-list-${width}x${height}.png`, fullPage: true });
 });
 
-test("listado muestra colaborador, código, físicas, venta, reemplazo, provincia, cliente, unidad y estado", async ({ page }) => {
+test("listado (tarjeta compacta): colaborador, código, estado, fecha de registro, cliente y unidad -- NUNCA físicas/venta/reemplazo/provincia", async ({ page }) => {
   await page.goto("/documentos/vacaciones");
   await expect(page.getByText("MARÍA AGENTE OPERATIVA")).toBeVisible();
-  await expect(page.getByText("Código PER-001")).toBeVisible();
-  await expect(page.getByText(/Físicas:.*15 días/)).toBeVisible();
-  await expect(page.getByText(/Venta:.*5 días/)).toBeVisible();
-  await expect(page.getByText(/Reemplazo: CARLOS REEMPLAZO OPERATIVO/)).toBeVisible();
-  await expect(page.getByText(/Provincia: AREQUIPA/)).toBeVisible();
+  await expect(page.getByText("(PER-001)")).toBeVisible();
   await expect(page.getByText("RENIEC · OFICINA REGISTRAL ATE")).toBeVisible();
+  await expect(page.getByText(/Registrado:/)).toBeVisible();
   // REGISTRADO se muestra como "Pendiente de firma" (etiqueta orientada a firma, ver review.ts).
   await expect(page.getByText("Pendiente de firma", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ver detalle" })).toBeVisible();
+  await expect(page.getByText(/Físicas:/)).toHaveCount(0);
+  await expect(page.getByText(/Venta:/)).toHaveCount(0);
+  await expect(page.getByText(/Reemplazo:/)).toHaveCount(0);
+  await expect(page.getByText(/Provincia:/)).toHaveCount(0);
 });
 
 test("admin ve la columna de coordinador; coordinador no", async ({ page }) => {
@@ -43,6 +45,14 @@ test("admin ve la columna de coordinador; coordinador no", async ({ page }) => {
   await expect(page.getByText(/Coordinador: Javier Quispe/)).toBeVisible();
   await page.goto("/documentos/vacaciones");
   await expect(page.getByText(/Coordinador: Javier Quispe/)).toHaveCount(0);
+});
+test("admin también ve la tarjeta compacta (misma tarjeta que coordinador/gerente, sin físicas/venta/reemplazo/provincia)", async ({ page }) => {
+  await page.goto("/documentos/vacaciones?role=admin");
+  await expect(page.getByText("(PER-001)")).toBeVisible();
+  await expect(page.getByText(/Físicas:/)).toHaveCount(0);
+  await expect(page.getByText(/Venta:/)).toHaveCount(0);
+  await expect(page.getByText(/Reemplazo:/)).toHaveCount(0);
+  await expect(page.getByText(/Provincia:/)).toHaveCount(0);
 });
 
 test("catálogo de provincias vacío muestra aviso en vez de un select vacío", async ({ page }) => {
@@ -391,7 +401,7 @@ test("prueba D: sin el flag habilitado, el mantenimiento muestra el aviso de des
   await expect(page.getByText(/borrado de papeletas de prueba está deshabilitado/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Eliminar/ })).toHaveCount(0);
 });
-test("prueba D: eliminar exige selección y confirmación explícita antes de borrar", async ({ page }) => {
+test("prueba D: eliminar exige selección y escribir ELIMINAR (no basta un clic) antes de borrar", async ({ page }) => {
   await page.goto("/documentos/vacaciones/mantenimiento?role=admin");
   const deleteButton = page.getByRole("button", { name: /Eliminar .*papeleta/ });
   await expect(deleteButton).toBeDisabled();
@@ -401,7 +411,11 @@ test("prueba D: eliminar exige selección y confirmación explícita antes de bo
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Eliminar papeletas de prueba")).toBeVisible();
+  const confirmButton = dialog.getByRole("button", { name: "Eliminar definitivamente" });
+  await expect(confirmButton).toBeDisabled(); // un solo clic no alcanza
+  await page.getByLabel(/Escribe ELIMINAR/).fill("eliminar"); // insensible a mayúsculas
+  await expect(confirmButton).toBeEnabled();
   await expect(page.getByText(/Se eliminaron/)).toHaveCount(0); // todavía no se confirmó
-  await dialog.getByRole("button", { name: "Eliminar definitivamente" }).click();
+  await confirmButton.click();
   await expect(page.getByText(/Se eliminaron 1 papeleta\(s\) y 1 archivo\(s\) de Storage\./)).toBeVisible();
 });

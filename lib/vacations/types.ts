@@ -16,35 +16,29 @@ export const papeletaVersionTipoLabel: Record<PapeletaVersionTipo, string> = {
   ORIGINAL: "Original", CORRECCION: "Corrección", FIRMADO: "Firmado",
 };
 
+// Fila compacta de la bandeja (coordinador/admin/gerente): SOLO lo que la tarjeta resumida
+// necesita (colaborador, código, estado, fecha de registro, coordinador, cliente, unidad). Todo
+// lo demás (físicas, venta, reemplazo, provincia detallada) vive únicamente en PapeletaDetailRow,
+// visible desde "Ver detalle". La forma coincide con lo que devuelve la RPC
+// listar_papeletas_vacaciones_filtradas (ver lib/vacations/list-data.ts), no con un select directo.
 export interface PapeletaRow {
   id: string;
   created_at: string;
-  updated_at?: string;
-  colaborador_id?: string;
   colaborador_nombre: string;
   colaborador_codigo: string;
-  fisicas_fecha_inicio: string;
-  fisicas_fecha_fin: string;
-  fisicas_dias: number;
-  tiene_venta: boolean;
-  venta_fecha_inicio: string | null;
-  venta_fecha_fin: string | null;
-  venta_dias: number | null;
   estado: PapeletaEstado;
   version_actual: number;
   motivo_observacion: string | null;
   archivo_nombre: string;
-  es_prueba?: boolean;
-  coordinador_id?: string;
-  reemplazo_id?: string;
-  provincia_id?: string;
-  cliente_id?: string;
-  unidad_id?: string;
-  reemplazo: { nombre: string } | null;
+  es_prueba: boolean;
+  coordinador_id: string;
+  provincia_id: string | null;
+  cliente_id: string | null;
+  unidad_id: string | null;
   provincias: { nombre: string } | null;
   clientes: { nombre: string } | null;
   unidades: { nombre: string } | null;
-  profiles?: { nombre: string } | null;
+  profiles: { nombre: string } | null;
 }
 
 export interface PapeletaVersionRow {
@@ -75,16 +69,6 @@ export interface PapeletaEventoRow {
   created_at: string;
   profiles: { nombre: string } | null;
 }
-
-// unidades tiene dos FK desde papeletas_vacaciones (simple + compuesta con cliente_id, igual
-// que requerimientos): hay que nombrar la relación o PostgREST responde PGRST201 (ambigua) y
-// la consulta entera falla, lo que en la página se veía como "no hay papeletas registradas".
-export const PAPELETA_LIST_SELECT =
-  "id,created_at,colaborador_nombre,colaborador_codigo,fisicas_fecha_inicio,fisicas_fecha_fin,fisicas_dias," +
-  "tiene_venta,venta_fecha_inicio,venta_fecha_fin,venta_dias,estado,version_actual,motivo_observacion,archivo_nombre," +
-  "es_prueba,reemplazo:personal!papeletas_vacaciones_reemplazo_id_fkey(nombre),provincias(nombre),clientes(nombre)," +
-  "unidades!papeletas_vacaciones_unidad_id_fkey(nombre)," +
-  "profiles!papeletas_vacaciones_coordinador_id_fkey(nombre)";
 
 export interface PapeletaDetailRow {
   id: string; created_at: string; updated_at: string; coordinador_id: string;
