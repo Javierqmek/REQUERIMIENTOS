@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, FileUp, LoaderCircle } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { createClient } from "@/lib/supabase/client";
@@ -30,8 +31,12 @@ async function loadPdfjs() {
 
 export function VacationRequestForm({ coordinadorNombre }: { coordinadorNombre: string }) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfRef = useRef<PDFDocumentProxy | null>(null);
+  // Evita que un render en curso de un archivo anterior pinte el canvas después de que el
+  // usuario ya seleccionó uno nuevo (carrera clásica entre selecciones rápidas de archivo).
+  const renderSequence = useRef(0);
   // Generado una sola vez por montaje del formulario: protege contra doble clic, reintento
   // del navegador, timeout o respuesta perdida sin crear una segunda papeleta (ver RPC).
   const [requestId] = useState(createRequestId);
@@ -64,7 +69,10 @@ export function VacationRequestForm({ coordinadorNombre }: { coordinadorNombre: 
   const [pdfPages, setPdfPages] = useState(0);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfWarning, setPdfWarning] = useState("");
+  // Bloqueante: el archivo no es un PDF válido/legible. No incluye el aviso de A4, que es
+  // solo informativo y nunca debe impedir el registro (algunos escáneres reales no dan A4 exacto).
+  const [pdfError, setPdfError] = useState("");
+  const [pdfA4Note, setPdfA4Note] = useState("");
   const [confirmado, setConfirmado] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -72,55 +80,69 @@ export function VacationRequestForm({ coordinadorNombre }: { coordinadorNombre: 
   const [error, setError] = useState("");
   const [successId, setSuccessId] = useState("");
 
-  async function renderPage(pdf: PDFDocumentProxy, pageNumber: number) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  async function renderPage(pdf: PDFDocumentProxy, pageNumber: number, sequence: number) {
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 1 });
     if (pageNumber === 1) {
-      setPdfWarning(isA4Size(viewport.width, viewport.height) ? "" : "El PDF no parece tener formato A4 (210 × 297 mm). El servidor lo validará al registrar.");
+      setPdfA4Note(isA4Size(viewport.width, viewport.height) ? "" : "El documento no tiene dimensiones A4 estándar. Verifique que sea legible antes de continuar.");
     }
     const displayScale = Math.min(1.4, Math.max(.4, 520 / viewport.width));
     const displayViewport = page.getViewport({ scale: displayScale });
-    canvas.width = Math.ceil(displayViewport.width);
-    canvas.height = Math.ceil(displayViewport.height);
-    await page.render({ canvasContext: canvas.getContext("2d")!, viewport: displayViewport }).promise;
+    // Se dibuja en un canvas fuera de pantalla y recién se copia al visible si este render
+    // sigue siendo el vigente: evita que una selección de archivo más nueva quede pisada por
+    // un render anterior que termina tarde (carrera clásica de renders asíncronos).
+    const buffer = document.createElement("canvas");
+    buffer.width = Math.ceil(displayViewport.width);
+    buffer.height = Math.ceil(displayViewport.height);
+    await page.render({ canvasContext: buffer.getContext("2d")!, viewport: displayViewport }).promise;
+    if (sequence !== renderSequence.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = buffer.width;
+    canvas.height = buffer.height;
+    const context = canvas.getContext("2d")!;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(buffer, 0, 0);
   }
 
   async function chooseFile(selected: File | null) {
+    const sequence = ++renderSequence.current;
     setFile(selected);
     setConfirmado(false);
-    setPdfWarning("");
+    setPdfError("");
+    setPdfA4Note("");
     setPdfPages(0);
     pdfRef.current?.destroy();
     pdfRef.current = null;
     if (!selected) return;
     if (selected.type && selected.type !== "application/pdf" && !selected.name.toLowerCase().endsWith(".pdf")) {
-      setPdfWarning("Selecciona un archivo PDF.");
+      setPdfError("Selecciona un archivo PDF.");
       return;
     }
     setPdfLoading(true);
     try {
       const bytes = new Uint8Array(await selected.arrayBuffer());
-      if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") { setPdfWarning("El archivo no es un PDF válido."); return; }
+      if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") { setPdfError("El archivo no es un PDF válido."); return; }
       const pdfjs = await loadPdfjs();
       const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+      if (sequence !== renderSequence.current) { void pdf.destroy(); return; }
       pdfRef.current = pdf;
       setPdfPages(pdf.numPages);
       setPdfPage(1);
-      await renderPage(pdf, 1);
+      await renderPage(pdf, 1, sequence);
     } catch {
-      setPdfWarning("No se pudo leer el PDF. Verifica que no esté dañado o cifrado.");
+      if (sequence === renderSequence.current) setPdfError("No se pudo leer el PDF. Verifica que no esté dañado o cifrado.");
     } finally {
-      setPdfLoading(false);
+      if (sequence === renderSequence.current) setPdfLoading(false);
     }
   }
 
   async function changePage(next: number) {
     if (!pdfRef.current || next < 1 || next > pdfPages) return;
+    const sequence = renderSequence.current;
     setPdfPage(next);
     setPdfLoading(true);
-    try { await renderPage(pdfRef.current, next); } finally { setPdfLoading(false); }
+    try { await renderPage(pdfRef.current, next, sequence); } finally { if (sequence === renderSequence.current) setPdfLoading(false); }
   }
 
   const ready = Boolean(colaborador && reemplazo && physicalReady && !saleError && provinciaId && cliente && unidad && file && confirmado);
@@ -142,7 +164,7 @@ export function VacationRequestForm({ coordinadorNombre }: { coordinadorNombre: 
     });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
     if (!file) { setError("Adjunta la papeleta escaneada en PDF."); return; }
-    if (pdfWarning) { setError(pdfWarning); return; }
+    if (pdfError) { setError(pdfError); return; }
     if (!confirmado) { setError("Debes confirmar que el documento está completo y legible."); return; }
 
     savingRef.current = true; setSaving(true);
@@ -164,7 +186,18 @@ export function VacationRequestForm({ coordinadorNombre }: { coordinadorNombre: 
       const response = await fetch("/api/documentos/vacaciones", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo registrar la papeleta.");
-      setSuccessId(String(data.id));
+      const id = String(data.id || "");
+      if (!id) throw new Error("El servidor no devolvió un identificador. No se confirmó el registro.");
+      // Nunca mostrar éxito solo porque el servidor respondió 2xx: se confirma leyendo la fila
+      // de vuelta con la sesión del propio coordinador antes de declarar la papeleta registrada.
+      const confirm = await supabase.from("papeletas_vacaciones").select("id").eq("id", id).maybeSingle();
+      if (confirm.error || !confirm.data) {
+        throw new Error("La papeleta se registró pero no pudimos confirmarla todavía. Revisa \"Mis papeletas de vacaciones\" en unos segundos; si no aparece, contacta al administrador.");
+      }
+      // Invalida la caché de navegación del router para que el listado (visitado antes o
+      // después) refleje esta papeleta de inmediato, sin depender de una recarga manual.
+      router.refresh();
+      setSuccessId(id);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : "No se pudo registrar la papeleta.");
     } finally {
@@ -271,24 +304,30 @@ export function VacationRequestForm({ coordinadorNombre }: { coordinadorNombre: 
 
     <section className="section-card">
       <h2 className="section-title">F. Documento</h2>
-      <p className="mt-1 text-sm text-[#607089]">Papeleta escaneada y firmada, formato A4, solo PDF.</p>
+      <p className="mt-1 text-sm text-[#607089]">Papeleta escaneada y firmada, en PDF.</p>
       <div className="mt-4">
         <input className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#EAF2FF] file:px-4 file:py-2.5 file:font-semibold file:text-[#174EA6]"
           type="file" accept="application/pdf,.pdf" onChange={e => void chooseFile(e.target.files?.[0] ?? null)} />
       </div>
-      {pdfLoading && <LoadingState compact label="Procesando PDF..." />}
-      {file && !pdfLoading && <div className="mt-4 rounded-xl border border-[#DCE3EC] bg-[#E9EEF5] p-3">
+      {/* El contenedor se monta apenas hay archivo, sin esperar a que termine de cargar: si el
+          canvas solo existiera cuando pdfLoading es false, el primer render corre con la ref
+          todavía nula y la vista previa queda en blanco para siempre (bug ya corregido). */}
+      {file && !pdfError && <div className="relative mt-4 rounded-xl border border-[#DCE3EC] bg-[#E9EEF5] p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-[#45556D]">Vista previa {pdfPages ? `· Página ${pdfPage} de ${pdfPages}` : ""}</span>
           {pdfPages > 1 && <span className="flex items-center gap-1">
-            <button type="button" className="btn btn-ghost px-2" disabled={pdfPage === 1} onClick={() => void changePage(pdfPage - 1)} aria-label="Página anterior"><ChevronLeft size={16} /></button>
-            <button type="button" className="btn btn-ghost px-2" disabled={pdfPage === pdfPages} onClick={() => void changePage(pdfPage + 1)} aria-label="Página siguiente"><ChevronRight size={16} /></button>
+            <button type="button" className="btn btn-ghost px-2" disabled={pdfPage === 1 || pdfLoading} onClick={() => void changePage(pdfPage - 1)} aria-label="Página anterior"><ChevronLeft size={16} /></button>
+            <button type="button" className="btn btn-ghost px-2" disabled={pdfPage === pdfPages || pdfLoading} onClick={() => void changePage(pdfPage + 1)} aria-label="Página siguiente"><ChevronRight size={16} /></button>
           </span>}
         </div>
-        <div className="overflow-auto rounded-lg bg-white p-2"><canvas ref={canvasRef} className="mx-auto block h-auto max-w-full" /></div>
+        <div className="relative min-h-40 overflow-auto rounded-lg bg-white p-2">
+          <canvas ref={canvasRef} className="mx-auto block h-auto max-w-full" />
+          {pdfLoading && <div className="absolute inset-0 grid place-items-center bg-white/80"><LoadingState compact label="Procesando PDF..." /></div>}
+        </div>
       </div>}
-      {pdfWarning && <div className="mt-3"><Alert kind="warning">{pdfWarning}</Alert></div>}
-      {file && !pdfWarning && !pdfLoading && <label className="mt-4 flex items-start gap-2.5 text-sm text-[#172033]">
+      {pdfError && <div className="mt-3"><Alert kind="error">{pdfError}</Alert></div>}
+      {pdfA4Note && <div className="mt-3"><Alert kind="warning">{pdfA4Note}</Alert></div>}
+      {file && !pdfError && !pdfLoading && <label className="mt-4 flex items-start gap-2.5 text-sm text-[#172033]">
         <input type="checkbox" className="mt-0.5" checked={confirmado} onChange={e => setConfirmado(e.target.checked)} />
         <span>Confirmo que el documento está completo y legible, y que se visualizan claramente los textos, fechas, firmas, sellos y anotaciones.</span>
       </label>}

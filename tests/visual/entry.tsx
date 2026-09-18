@@ -16,8 +16,13 @@ import { DocumentWorkspace } from "../../components/document-workspace";
 import { DocumentHistory } from "../../components/document-history";
 import { VacationRequestForm } from "../../components/vacation-request-form";
 import { VacationRequestList } from "../../components/vacation-request-list";
-import type { PapeletaRow } from "../../lib/vacations/types";
+import { VacationReviewActions } from "../../components/vacation-review-actions";
+import { VacationCorrectionForm } from "../../components/vacation-correction-form";
+import { PapeletaEstadoBadge } from "../../components/papeleta-estado-badge";
+import type { PapeletaDetailRow, PapeletaEstado, PapeletaRow } from "../../lib/vacations/types";
+import { canCorrect, canReview } from "../../lib/vacations/review";
 import { editProfile, fixtureEdit } from "../fixtures/edit";
+import { IDS } from "../fixtures/admin";
 import type { AdminOptions, AdminResult } from "../../lib/admin/types";
 import type { AdminFilters } from "../../lib/admin/filters";
 import { parseRequirementQuery } from "../../lib/requirements/list-filters";
@@ -34,6 +39,7 @@ const signatureProfile = window.location.pathname === "/perfil/firma";
 const documentDetail = window.location.pathname === "/documentos/fixture";
 const vacationsList = window.location.pathname === "/documentos/vacaciones";
 const vacationsNew = window.location.pathname === "/documentos/vacaciones/nueva";
+const vacationsDetail = window.location.pathname === "/documentos/vacaciones/fixture";
 const query = new URLSearchParams(window.location.search);
 const fixture = fixtureEdit();
 if (query.get("estado") === "Atendido") fixture.requerimiento.estado = "Atendido";
@@ -45,13 +51,45 @@ const papeletaFixtures: PapeletaRow[] = [{
   colaborador_nombre: "MARÍA AGENTE OPERATIVA", colaborador_codigo: "PER-001",
   fisicas_fecha_inicio: "2026-10-01", fisicas_fecha_fin: "2026-10-15", fisicas_dias: 15,
   tiene_venta: true, venta_fecha_inicio: "2026-10-16", venta_fecha_fin: "2026-10-20", venta_dias: 5,
-  estado: "REGISTRADO", archivo_nombre: "papeleta-maria.pdf",
+  estado: "REGISTRADO", version_actual: 1, motivo_observacion: null, archivo_nombre: "papeleta-maria.pdf",
   reemplazo: { nombre: "CARLOS REEMPLAZO OPERATIVO" }, provincias: { nombre: "AREQUIPA" },
   clientes: { nombre: "RENIEC" }, unidades: { nombre: "OFICINA REGISTRAL ATE" }, profiles: { nombre: "Javier Quispe" },
 }];
-const profile = documentDetail&&query.get("role")==="gerente"?{...editProfile,id:documentFixture.firmante_id,role:"gerente" as const,nombre:"Gerente Seguroc"}:vacationsList&&query.get("role")==="admin"?{...editProfile,role:"admin" as const}:(editing && query.get("role") !== "admin") || listing || documents || newDocument || signatureProfile || documentDetail || vacationsList || vacationsNew ? editProfile : { ...editProfile, role: "admin" as const };
+// Nombre de parámetro deliberadamente distinto de "estado": ese nombre ya lo usa
+// parseAdminQuery en el servidor de pruebas para filtros de requerimientos (Pendiente/
+// Atendido/Observado) y un valor como OBSERVADO (mayúsculas, de papeletas) lo hace fallar.
+const detailEstado = (query.get("pstate") || "REGISTRADO") as PapeletaEstado;
+const papeletaDetailFixture: PapeletaDetailRow = {
+  id: "aa000000-0000-4000-8000-000000000001", created_at: "2026-09-16T15:00:00Z", updated_at: "2026-09-16T15:00:00Z",
+  coordinador_id: editProfile.id,
+  colaborador_id: "22000000-0000-4000-8000-000000000001", colaborador_nombre: "MARÍA AGENTE OPERATIVA", colaborador_codigo: "PER-001",
+  fisicas_fecha_inicio: "2026-10-01", fisicas_fecha_fin: "2026-10-15", fisicas_dias: 15,
+  tiene_venta: true, venta_fecha_inicio: "2026-10-16", venta_fecha_fin: "2026-10-20", venta_dias: 5,
+  estado: detailEstado, version_actual: 1,
+  motivo_observacion: detailEstado === "OBSERVADO" ? "El rango de venta se cruza con vacaciones físicas." : null,
+  archivo_nombre: "papeleta-maria.pdf",
+  reemplazo_id: "22000000-0000-4000-8000-000000000002",
+  provincia_id: "aa100000-0000-4000-8000-000000000001", cliente_id: IDS.cliente, unidad_id: IDS.unidad,
+  reemplazo: { id: "22000000-0000-4000-8000-000000000002", nombre: "CARLOS REEMPLAZO OPERATIVO", dni: "87654321", cargo: "AGENTE", codigo_personal: "PER-002" },
+  provincias: { id: "aa100000-0000-4000-8000-000000000001", nombre: "AREQUIPA" },
+  clientes: { id: IDS.cliente, nombre: "RENIEC" }, unidades: { id: IDS.unidad, nombre: "OFICINA REGISTRAL ATE" },
+  profiles: { nombre: "Javier Quispe" },
+};
+const profile = documentDetail&&query.get("role")==="gerente"?{...editProfile,id:documentFixture.firmante_id,role:"gerente" as const,nombre:"Gerente Seguroc"}
+  // El admin/gerente que revisa una papeleta en el detalle NUNCA es la misma persona que el
+  // coordinador dueño (papeletaDetailFixture.coordinador_id === editProfile.id): usar el mismo
+  // id rompería canReview (que exige ownerId !== userId) y ocultaría los botones de revisión.
+  :vacationsDetail&&query.get("role")==="admin"?{...editProfile,id:"a3000000-0000-4000-8000-000000000001",role:"admin" as const}
+  :vacationsDetail&&query.get("role")==="gerente"?{...editProfile,id:"88000000-0000-4000-8000-000000000001",role:"gerente" as const,nombre:"Gerente Seguroc"}
+  :vacationsList&&query.get("role")==="admin"?{...editProfile,role:"admin" as const}
+  :(editing && query.get("role") !== "admin") || listing || documents || newDocument || signatureProfile || documentDetail || vacationsList || vacationsNew || vacationsDetail ? editProfile : { ...editProfile, role: "admin" as const };
 createRoot(document.getElementById("root")!).render(
   <AppShell profile={profile}>
-    {documents ? <><DocumentSectionNav role={profile.role}/><DocumentList rows={[documentFixture]}/></> : documentDetail ? <section className="mx-auto max-w-7xl"><header className="page-header"><h1 className="page-title">Vacaciones</h1><p className="page-description">MARÍA DE LOS ÁNGELES FERNÁNDEZ · Gerente Seguroc</p>{coordinatorVersion&&profile.role==="gerente"&&<div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><strong className="text-sm text-emerald-900">Firmado previamente por coordinador</strong><p className="text-xs text-emerald-800">Carlos Ramos · 13 sept 2026, 07:08</p></div>}</header><DocumentWorkspace id={documentFixture.id} pages={3} status={documentFixture.estado} role={profile.role} userId={profile.id} creatorId={documentFixture.usuario_creador_id} signerId={documentFixture.firmante_id} placements={[]} profileReady={query.get("firma")!=="0"} coordinatorSigned={coordinatorVersion} pdfType={coordinatorVersion?"coordinador":"original"} pdfHash={coordinatorVersion?"a".repeat(64):"0".repeat(64)}/><DocumentHistory events={[{id:"1",accion:"CREADO",comentario:null,created_at:"2026-09-13T12:00:00Z",profiles:{nombre:"Carlos Ramos"}},{id:"2",accion:"DESCARGADO",comentario:null,created_at:"2026-09-13T12:05:00Z",profiles:{nombre:"Carlos Ramos"}},{id:"3",accion:"DESCARGADO",comentario:null,created_at:"2026-09-13T12:06:00Z",profiles:{nombre:"Carlos Ramos"}},{id:"4",accion:"ENVIADO",comentario:null,created_at:"2026-09-13T12:10:00Z",profiles:{nombre:"Carlos Ramos"}}]}/></section> : newDocument ? <><DocumentSectionNav role={profile.role}/><NewDocumentForm managers={[{id:documentFixture.firmante_id,nombre:"Gerente Seguroc"}]}/></> : vacationsList ? <><DocumentSectionNav role={profile.role}/><section className="mx-auto max-w-5xl"><header className="page-header"><h1 className="page-title">{profile.role==="admin"?"Papeletas de vacaciones":"Mis papeletas de vacaciones"}</h1></header><VacationRequestList rows={papeletaFixtures} showCoordinador={profile.role==="admin"}/></section></> : vacationsNew ? <><DocumentSectionNav role={profile.role}/><section className="mx-auto max-w-3xl"><header className="page-header"><h1 className="page-title">Registrar papeleta de vacaciones</h1></header><VacationRequestForm coordinadorNombre={profile.nombre}/></section></> : signatureProfile ? <SignatureProfileForm initialName={profile.nombre} initialRole="Coordinador" configured updatedAt="2026-09-13T12:00:00Z"/> : editing ? <EditRequirement initial={fixture} profile={profile}/> : creating ? <NewRequirement/> : listing ? <RequirementsList initial={window.__ADMIN_FIXTURE__.initial} options={window.__ADMIN_FIXTURE__.options} initialFilters={parseRequirementQuery(query).filters}/> : maintenance ? <AdminMaintenance clients={window.__ADMIN_FIXTURE__.options.clientes.map(client=>({...client,activo:true}))}/> : importing ? <AdminImports/> : <><AdminSectionNav/><AdminRequirements {...window.__ADMIN_FIXTURE__} allowDeletion={query.get("delete")==="1"}/></>}
+    {documents ? <><DocumentSectionNav role={profile.role}/><DocumentList rows={[documentFixture]}/></> : documentDetail ? <section className="mx-auto max-w-7xl"><header className="page-header"><h1 className="page-title">Vacaciones</h1><p className="page-description">MARÍA DE LOS ÁNGELES FERNÁNDEZ · Gerente Seguroc</p>{coordinatorVersion&&profile.role==="gerente"&&<div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><strong className="text-sm text-emerald-900">Firmado previamente por coordinador</strong><p className="text-xs text-emerald-800">Carlos Ramos · 13 sept 2026, 07:08</p></div>}</header><DocumentWorkspace id={documentFixture.id} pages={3} status={documentFixture.estado} role={profile.role} userId={profile.id} creatorId={documentFixture.usuario_creador_id} signerId={documentFixture.firmante_id} placements={[]} profileReady={query.get("firma")!=="0"} coordinatorSigned={coordinatorVersion} pdfType={coordinatorVersion?"coordinador":"original"} pdfHash={coordinatorVersion?"a".repeat(64):"0".repeat(64)}/><DocumentHistory events={[{id:"1",accion:"CREADO",comentario:null,created_at:"2026-09-13T12:00:00Z",profiles:{nombre:"Carlos Ramos"}},{id:"2",accion:"DESCARGADO",comentario:null,created_at:"2026-09-13T12:05:00Z",profiles:{nombre:"Carlos Ramos"}},{id:"3",accion:"DESCARGADO",comentario:null,created_at:"2026-09-13T12:06:00Z",profiles:{nombre:"Carlos Ramos"}},{id:"4",accion:"ENVIADO",comentario:null,created_at:"2026-09-13T12:10:00Z",profiles:{nombre:"Carlos Ramos"}}]}/></section> : newDocument ? <><DocumentSectionNav role={profile.role}/><NewDocumentForm managers={[{id:documentFixture.firmante_id,nombre:"Gerente Seguroc"}]}/></> : vacationsList ? <><DocumentSectionNav role={profile.role}/><section className="mx-auto max-w-5xl"><header className="page-header"><h1 className="page-title">{profile.role==="coordinador"?"Mis papeletas de vacaciones":"Papeletas de vacaciones"}</h1></header><VacationRequestList rows={papeletaFixtures} showCoordinador={profile.role!=="coordinador"}/></section></> : vacationsNew ? <><DocumentSectionNav role={profile.role}/><section className="mx-auto max-w-3xl"><header className="page-header"><h1 className="page-title">Registrar papeleta de vacaciones</h1></header><VacationRequestForm coordinadorNombre={profile.nombre}/></section></> : vacationsDetail ? <><DocumentSectionNav role={profile.role}/><section className="mx-auto max-w-3xl"><header className="page-header flex items-center justify-between gap-3"><h1 className="page-title">Papeleta de vacaciones</h1><PapeletaEstadoBadge estado={papeletaDetailFixture.estado}/></header>
+  {papeletaDetailFixture.estado==="OBSERVADO"&&papeletaDetailFixture.motivo_observacion&&<div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"><strong className="font-semibold">Motivo de observación: </strong>{papeletaDetailFixture.motivo_observacion}</div>}
+  <div className="section-card"><h2 className="section-title">Datos de la papeleta</h2><dl className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2"><div className="border-t border-[#E8EDF4] py-2"><dt className="text-xs font-medium text-[#607089]">Colaborador</dt><dd className="mt-0.5 text-sm font-medium">{papeletaDetailFixture.colaborador_nombre} ({papeletaDetailFixture.colaborador_codigo})</dd></div></dl></div>
+  {canReview(profile.role,papeletaDetailFixture.coordinador_id,profile.id)&&papeletaDetailFixture.estado==="REGISTRADO"&&<div className="mt-4"><VacationReviewActions papeletaId={papeletaDetailFixture.id}/></div>}
+  {canCorrect(profile.role,papeletaDetailFixture.coordinador_id,profile.id,papeletaDetailFixture.estado)&&<div className="mt-4"><div className="section-card"><h2 className="section-title">Corregir papeleta observada</h2></div><div className="mt-4"><VacationCorrectionForm papeleta={papeletaDetailFixture}/></div></div>}
+</section></> : signatureProfile ? <SignatureProfileForm initialName={profile.nombre} initialRole="Coordinador" configured updatedAt="2026-09-13T12:00:00Z"/> : editing ? <EditRequirement initial={fixture} profile={profile}/> : creating ? <NewRequirement/> : listing ? <RequirementsList initial={window.__ADMIN_FIXTURE__.initial} options={window.__ADMIN_FIXTURE__.options} initialFilters={parseRequirementQuery(query).filters}/> : maintenance ? <AdminMaintenance clients={window.__ADMIN_FIXTURE__.options.clientes.map(client=>({...client,activo:true}))}/> : importing ? <AdminImports/> : <><AdminSectionNav/><AdminRequirements {...window.__ADMIN_FIXTURE__} allowDeletion={query.get("delete")==="1"}/></>}
   </AppShell>
 );

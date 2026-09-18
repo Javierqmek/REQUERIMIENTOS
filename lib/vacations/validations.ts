@@ -28,3 +28,33 @@ export const papeletaSchema = z.object({
     ctx.addIssue({ code: "custom", message: "No se permiten fechas de venta sin activar la venta de vacaciones.", path: ["tiene_venta"] });
   }
 });
+
+// Corrección de una papeleta OBSERVADA: mismas reglas de fechas/reemplazo, pero sin
+// colaborador_id (se mantiene fijo a propósito, ver recomendación en el informe de entrega).
+const correctionFields = z.object({
+  reemplazo_id: z.string().uuid("Selecciona un reemplazo"),
+  provincia_id: z.string().uuid("Selecciona una provincia"),
+  cliente_id: z.string().uuid("Selecciona un cliente"),
+  unidad_id: z.string().uuid("Selecciona una unidad"),
+  fisicas_fecha_inicio: isoDate,
+  fisicas_fecha_fin: isoDate,
+  tiene_venta: z.boolean(),
+  venta_fecha_inicio: isoDate.nullable(),
+  venta_fecha_fin: isoDate.nullable(),
+});
+export function papeletaCorrectionSchema(colaboradorId: string) {
+  return correctionFields.superRefine((value, ctx) => {
+    if (value.reemplazo_id === colaboradorId) {
+      ctx.addIssue({ code: "custom", message: "El reemplazo no puede ser el mismo colaborador que sale de vacaciones.", path: ["reemplazo_id"] });
+    }
+    const physicalError = validatePhysicalRange(value.fisicas_fecha_inicio, value.fisicas_fecha_fin);
+    if (physicalError) ctx.addIssue({ code: "custom", message: physicalError, path: ["fisicas_fecha_fin"] });
+
+    if (value.tiene_venta) {
+      const saleError = validateSaleRange(true, value.fisicas_fecha_fin, value.venta_fecha_inicio ?? "", value.venta_fecha_fin ?? "");
+      if (saleError) ctx.addIssue({ code: "custom", message: saleError, path: ["venta_fecha_inicio"] });
+    } else if (value.venta_fecha_inicio || value.venta_fecha_fin) {
+      ctx.addIssue({ code: "custom", message: "No se permiten fechas de venta sin activar la venta de vacaciones.", path: ["tiene_venta"] });
+    }
+  });
+}

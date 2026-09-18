@@ -141,3 +141,78 @@ test("flujo completo: colaborador, días calendario, venta, reemplazo, ubicació
   await expect(page.getByRole("heading", { name: "Papeleta registrada" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Mis papeletas de vacaciones" })).toBeVisible();
 });
+
+// --- Bug 1 corregido: la vista previa realmente pinta contenido, no solo un contenedor vacío ---
+test("la vista previa del PDF renderiza contenido real en el canvas (no queda en blanco)", async ({ page }) => {
+  await goToForm(page);
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "papeleta.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%FAKE_TEST_PDF"),
+  });
+  const canvas = page.locator("canvas");
+  await expect(canvas).toBeVisible();
+  await expect.poll(async () => canvas.evaluate((el: HTMLCanvasElement) => el.width > 0 && el.height > 0)).toBe(true);
+  await expect.poll(async () => canvas.evaluate((el: HTMLCanvasElement) => {
+    const ctx = el.getContext("2d");
+    if (!ctx) return false;
+    const { data } = ctx.getImageData(0, 0, el.width, el.height);
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return true; // algún píxel no transparente
+    return false;
+  })).toBe(true);
+});
+
+// --- Bug 2 corregido: A4 deja de bloquear el registro ---
+test("PDF sin dimensiones A4 muestra advertencia pero NO bloquea el registro", async ({ page }) => {
+  await page.goto("/documentos/vacaciones/nueva?nonA4=1");
+  await page.getByLabel("Colaborador").fill("María");
+  await page.getByRole("button", { name: /MARÍA AGENTE OPERATIVA/ }).click();
+  await page.getByLabel("Fecha inicio").fill("2026-10-01");
+  await page.getByLabel("Fecha fin").fill("2026-10-05");
+  await page.getByLabel("Reemplazo").fill("Carlos");
+  await page.getByRole("button", { name: /CARLOS REEMPLAZO OPERATIVO/ }).click();
+  await page.getByLabel("Cliente").selectOption({ label: "RENIEC" });
+  await page.getByLabel("Unidad / Sede").selectOption({ label: "OFICINA REGISTRAL ATE" });
+  await page.getByLabel("Provincia").selectOption({ label: "AREQUIPA" });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "papeleta-carta.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%FAKE_TEST_PDF"),
+  });
+  await expect(page.getByText("El documento no tiene dimensiones A4 estándar. Verifique que sea legible antes de continuar.")).toBeVisible();
+  // La advertencia no impide continuar: el checkbox sigue disponible y el registro se habilita.
+  await page.getByLabel(/Confirmo que el documento está completo y legible/).check();
+  await expect(page.getByRole("button", { name: "Registrar papeleta" })).toBeEnabled();
+  await page.getByRole("button", { name: "Registrar papeleta" }).click();
+  await expect(page.getByRole("heading", { name: "Papeleta registrada" })).toBeVisible();
+});
+
+// --- Nuevo flujo de revisión: detalle, observar/marcar conforme, corrección ---
+test("detalle REGISTRADO: admin ve revisión y el motivo de observación es obligatorio", async ({ page }) => {
+  await page.goto("/documentos/vacaciones/fixture?role=admin");
+  await expect(page.getByText("Registrado", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Marcar conforme" })).toBeVisible();
+  await page.getByRole("button", { name: "Observar" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const confirm = dialog.getByRole("button", { name: "Observar" });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Motivo de observación").fill("El rango de venta se cruza con vacaciones físicas.");
+  await expect(confirm).toBeEnabled();
+});
+
+test("detalle REGISTRADO: el coordinador no ve acciones de revisión (ni sobre su propia papeleta)", async ({ page }) => {
+  await page.goto("/documentos/vacaciones/fixture");
+  await expect(page.getByRole("button", { name: "Marcar conforme" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Observar" })).toHaveCount(0);
+});
+
+test("detalle OBSERVADO: muestra el motivo y solo el coordinador dueño puede corregir", async ({ page }) => {
+  await page.goto("/documentos/vacaciones/fixture?pstate=OBSERVADO");
+  await expect(page.getByText("Observado", { exact: true })).toBeVisible();
+  await expect(page.getByText("El rango de venta se cruza con vacaciones físicas.")).toBeVisible();
+  await expect(page.getByText("Corregir papeleta observada")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Guardar corrección" })).toBeDisabled();
+
+  await page.goto("/documentos/vacaciones/fixture?pstate=OBSERVADO&role=admin");
+  await expect(page.getByText("Corregir papeleta observada")).toHaveCount(0);
+  // OBSERVADO ya no admite una segunda observación/conforme directa: no hay botones de revisión.
+  await expect(page.getByRole("button", { name: "Marcar conforme" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Observar" })).toHaveCount(0);
+});

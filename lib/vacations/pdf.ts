@@ -6,7 +6,10 @@ export const PAPELETA_BUCKET = "papeletas-vacaciones";
 export const MAX_PAPELETA_BYTES = Number(process.env.DOCUMENT_MAX_BYTES || 10 * 1024 * 1024);
 export const MAX_PAPELETA_PAGES = 30;
 
-// Validación técnica autoritativa (servidor): PDF real, tamaño, páginas y A4 con tolerancia.
+// Validación técnica autoritativa (servidor): PDF real, tamaño y páginas. El formato A4 ya NO
+// es un motivo de rechazo: algunos escáneres reales no producen dimensiones exactas y bloquear
+// el registro por eso impedía subir papeletas legítimas. isA4 queda solo informativo para que
+// el llamador (o el cliente) pueda mostrar una advertencia, nunca para bloquear.
 // No certifica legibilidad humana: eso lo confirma el coordinador mediante el checkbox obligatorio.
 export async function validatePapeletaPdf(file: File) {
   if (file.size < 8 || file.size > MAX_PAPELETA_BYTES) {
@@ -21,9 +24,6 @@ export async function validatePapeletaPdf(file: File) {
   if (pages.length < 1 || pages.length > MAX_PAPELETA_PAGES) {
     throw new Error(`La papeleta debe tener entre 1 y ${MAX_PAPELETA_PAGES} páginas.`);
   }
-  for (const page of pages) {
-    const { width, height } = page.getSize();
-    if (!isA4Size(width, height)) throw new Error("El PDF debe estar en formato A4 (210 × 297 mm), con tolerancia razonable de escaneo.");
-  }
-  return { bytes, pages: pages.length, hash: sha256(bytes), name: safePdfName(file.name) };
+  const firstPage = pages[0].getSize();
+  return { bytes, pages: pages.length, hash: sha256(bytes), name: safePdfName(file.name), isA4: isA4Size(firstPage.width, firstPage.height) };
 }
