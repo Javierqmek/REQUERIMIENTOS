@@ -61,10 +61,14 @@ export interface PapeletaEventoRow {
   profiles: { nombre: string } | null;
 }
 
+// unidades tiene dos FK desde papeletas_vacaciones (simple + compuesta con cliente_id, igual
+// que requerimientos): hay que nombrar la relación o PostgREST responde PGRST201 (ambigua) y
+// la consulta entera falla, lo que en la página se veía como "no hay papeletas registradas".
 export const PAPELETA_LIST_SELECT =
   "id,created_at,colaborador_nombre,colaborador_codigo,fisicas_fecha_inicio,fisicas_fecha_fin,fisicas_dias," +
   "tiene_venta,venta_fecha_inicio,venta_fecha_fin,venta_dias,estado,version_actual,motivo_observacion,archivo_nombre," +
-  "reemplazo:personal!papeletas_vacaciones_reemplazo_id_fkey(nombre),provincias(nombre),clientes(nombre),unidades(nombre)," +
+  "reemplazo:personal!papeletas_vacaciones_reemplazo_id_fkey(nombre),provincias(nombre),clientes(nombre)," +
+  "unidades!papeletas_vacaciones_unidad_id_fkey(nombre)," +
   "profiles!papeletas_vacaciones_coordinador_id_fkey(nombre)";
 
 export interface PapeletaDetailRow {
@@ -81,10 +85,11 @@ export interface PapeletaDetailRow {
   profiles: { nombre: string } | null;
 }
 
+// Mismo motivo que PAPELETA_LIST_SELECT: unidades necesita la FK explícita para no ser ambigua.
 export const PAPELETA_DETAIL_SELECT =
   "id,created_at,updated_at,coordinador_id,colaborador_id,colaborador_nombre,colaborador_codigo," +
   "fisicas_fecha_inicio,fisicas_fecha_fin,fisicas_dias,tiene_venta,venta_fecha_inicio,venta_fecha_fin,venta_dias," +
   "estado,version_actual,motivo_observacion,archivo_nombre,reemplazo_id,provincia_id,cliente_id,unidad_id," +
   "reemplazo:personal!papeletas_vacaciones_reemplazo_id_fkey(id,nombre,dni,cargo,codigo_personal)," +
-  "provincias(id,nombre),clientes(id,nombre),unidades(id,nombre)," +
+  "provincias(id,nombre),clientes(id,nombre),unidades!papeletas_vacaciones_unidad_id_fkey(id,nombre)," +
   "profiles!papeletas_vacaciones_coordinador_id_fkey(nombre)";

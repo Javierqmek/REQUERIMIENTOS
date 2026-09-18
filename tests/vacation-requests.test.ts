@@ -10,6 +10,7 @@ import { papeletaCorrectionSchema, papeletaSchema } from "../lib/vacations/valid
 import { isValidRequestId, papeletaCorrectionStoragePath, papeletaStoragePath } from "../lib/vacations/storage-path";
 import { makeRegisterPapeletaHandler } from "../lib/vacations/handlers";
 import { canCorrect, canMarkConforme, canObserve, canReview } from "../lib/vacations/review";
+import { PAPELETA_DETAIL_SELECT, PAPELETA_LIST_SELECT } from "../lib/vacations/types";
 import { CATALOG_KINDS, catalogCreateSchema, catalogDeleteSchema, catalogUpdateSchema } from "../lib/admin/maintenance";
 
 const asArrayBuffer = (bytes: Uint8Array) => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -612,4 +613,43 @@ test("el motivo de observación vacío se rechaza antes de llamar a la RPC", asy
 test("la corrección limpia el archivo subido si la RPC falla, sin tocar versiones anteriores", async () => {
   const handlers = await readFile("lib/vacations/handlers.ts", "utf8");
   assert.match(handlers, /La versión anterior nunca se toca: solo se limpia el archivo de este intento fallido\./);
+});
+
+// ============================================================================
+// Bug: el listado de /documentos/vacaciones no mostraba filas ya persistidas.
+// Causa raíz real (confirmada contra PostgreSQL): papeletas_vacaciones tiene DOS foreign keys
+// hacia unidades (la simple `unidad_id` y la compuesta `papeletas_vacaciones_unidad_cliente_fkey`
+// que garantiza que la unidad pertenezca al cliente, igual que en requerimientos). El select del
+// listado embebía `unidades(nombre)` sin indicar cuál FK usar: PostgREST responde PGRST201
+// ("more than one relationship was found") y la consulta entera falla. Como
+// `const { data } = await query` no revisaba `error`, la UI mostraba "sin registros" en vez
+// del error real, para cualquier rol (coordinador, admin o gerente).
+// ============================================================================
+test("PAPELETA_LIST_SELECT y PAPELETA_DETAIL_SELECT desambiguan unidades con la FK simple explícita", () => {
+  // Debe existir la relación calificada...
+  assert.match(PAPELETA_LIST_SELECT, /unidades!papeletas_vacaciones_unidad_id_fkey\(nombre\)/);
+  assert.match(PAPELETA_DETAIL_SELECT, /unidades!papeletas_vacaciones_unidad_id_fkey\(id,nombre\)/);
+  // ...y no debe quedar ningún embed de "unidades" sin calificar en ninguno de los dos selects
+  // (una futura edición no debe reintroducir la ambigüedad sin darse cuenta).
+  for (const select of [PAPELETA_LIST_SELECT, PAPELETA_DETAIL_SELECT]) {
+    const bareUnidades = select.match(/(?<![\w!])unidades\(/g);
+    assert.equal(bareUnidades, null, `no debe quedar "unidades(" sin calificar en: ${select}`);
+  }
+});
+test("clientes no necesita FK explícita: papeletas_vacaciones solo tiene una relación hacia clientes", async () => {
+  const sql = await readFile("supabase/migrations/202609170001_papeletas_vacaciones.sql", "utf8");
+  // La FK compuesta apunta a unidades(id, cliente_id), no a clientes: confirma que clientes
+  // sigue teniendo una sola relación y no necesita (ni debe forzarse a usar) un hint de FK.
+  assert.match(sql, /foreign key \(unidad_id, cliente_id\) references public\.unidades\(id, cliente_id\)/);
+  assert.doesNotMatch(sql, /references public\.clientes\(id, /);
+});
+test("el mismo patrón de FK compuesta ya existía en requerimientos: la ambigüedad es un caso conocido, no una sorpresa", async () => {
+  const requerimientos = await readFile("lib/requerimientos.ts", "utf8");
+  assert.match(requerimientos, /unidades!requerimientos_unidad_id_fkey\(nombre\)/);
+});
+test("el listado nunca vuelve a ocultar un error de consulta (ver corrección previa) y sigue siendo dinámico", async () => {
+  const source = await readFile("app/(private)/documentos/vacaciones/page.tsx", "utf8");
+  assert.match(source, /const \{ data, error \} = await query;/);
+  assert.match(source, /error \? <Alert kind="error">/);
+  assert.match(source, /export const dynamic = "force-dynamic";/);
 });
