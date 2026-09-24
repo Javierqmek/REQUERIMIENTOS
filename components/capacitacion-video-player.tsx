@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Script from "next/script";
 import { useRouter } from "next/navigation";
-import { FileDown, FileSignature } from "lucide-react";
+import { FileDown, FileSignature, RefreshCw, TriangleAlert } from "lucide-react";
 import { Alert } from "./ui/alert";
 
 // Tipos mínimos de la YouTube IFrame API (no hay @types oficiales instalados) -- solo lo que
@@ -17,7 +16,7 @@ interface YoutubePlayerOptions {
   host: string;
   videoId: string;
   playerVars: Record<string, number | string>;
-  events: { onStateChange?: (event: { data: number }) => void };
+  events: { onReady?: () => void; onStateChange?: (event: { data: number }) => void };
 }
 declare global {
   interface Window {
@@ -106,6 +105,13 @@ export function CapacitacionVideoPlayer({ capacitacionId, tienePdf, porcentajeIn
 // suma si el salto es pequeño y hacia adelante (reproducción continua real); un salto grande
 // (arrastrar la barra) o hacia atrás no acumula nada. Más estricto que el video subido, que sí
 // confía en la posición.
+const CARGA_TIMEOUT_MS = 10_000;
+
+// Estado del reproductor: algunas redes (antivirus corporativos, proxies de colegios/empresas)
+// bloquean youtube.com/iframe_api directamente -- sin avisar, el navegador solo deja un recuadro
+// negro. Si la API no llama a onReady dentro de CARGA_TIMEOUT_MS, se asume bloqueada y se muestra
+// un aviso explícito con un botón para reintentar, en vez de dejar el recuadro negro sin ninguna
+// explicación.
 function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonce: string | null; onPorcentaje: (pct: number) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YoutubePlayerInstance | null>(null);
@@ -113,6 +119,8 @@ function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonc
   const lastTimeRef = useRef(0);
   const lastPctRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [estado, setEstado] = useState<"cargando" | "listo" | "error">("cargando");
+  const [intento, setIntento] = useState(0);
 
   useEffect(() => {
     let destroyed = false;
@@ -148,6 +156,7 @@ function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonc
         videoId,
         playerVars: { rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, disablekb: 1, origin: window.location.origin },
         events: {
+          onReady: () => { if (!destroyed) { clearTimeout(timeoutId); setEstado("listo"); } },
           onStateChange: (event) => {
             if (window.YT && event.data === window.YT.PlayerState.PLAYING) iniciarSeguimiento();
             else detenerSeguimiento();
@@ -155,24 +164,42 @@ function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonc
         },
       });
     }
+    function onFalloDeCarga() { if (!destroyed) setEstado("error"); }
 
+    const timeoutId = setTimeout(onFalloDeCarga, CARGA_TIMEOUT_MS);
+    let script: HTMLScriptElement | null = null;
     if (window.YT?.Player) crearReproductor();
     else {
       const previous = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = () => { previous?.(); crearReproductor(); };
+      script = document.createElement("script");
+      script.src = "https://www.youtube.com/iframe_api";
+      if (nonce) script.nonce = nonce;
+      script.onerror = onFalloDeCarga;
+      document.head.appendChild(script);
     }
 
     return () => {
       destroyed = true;
+      clearTimeout(timeoutId);
       detenerSeguimiento();
       playerRef.current?.destroy();
       playerRef.current = null;
+      script?.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, [videoId, intento]);
 
-  return <>
-    <Script src="https://www.youtube.com/iframe_api" strategy="afterInteractive" nonce={nonce ?? undefined} />
-    <div ref={containerRef} className="aspect-video w-full" />
-  </>;
+  return <div className="relative aspect-video w-full">
+    <div ref={containerRef} className={`h-full w-full ${estado === "listo" ? "" : "invisible"}`} />
+    {estado !== "listo" && <div className="absolute inset-0 grid place-items-center bg-black p-4 text-center">
+      {estado === "cargando"
+        ? <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        : <div className="max-w-xs space-y-3">
+            <TriangleAlert className="mx-auto text-amber-400" size={28} />
+            <p className="text-sm text-white">No se pudo cargar el video. Es posible que tu red o antivirus bloquee YouTube. Prueba desde tu celular con datos móviles u otra red.</p>
+            <button type="button" className="btn btn-secondary" onClick={() => { setEstado("cargando"); setIntento(i => i + 1); }}><RefreshCw size={16} />Reintentar</button>
+          </div>}
+    </div>}
+  </div>;
 }
