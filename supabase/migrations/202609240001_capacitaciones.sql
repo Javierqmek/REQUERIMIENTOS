@@ -401,10 +401,12 @@ grant execute on function public.admin_asignar_cliente_personal(uuid,uuid) to au
 -- ============================================================================
 -- Storage: bucket privado para videos + PDFs de capacitación. Rutas deterministas por
 -- capacitación (capacitacion_id/video.ext, capacitacion_id/material.pdf), nunca públicas.
+-- Límite de 50 MB por archivo: el proyecto Supabase está en plan gratuito, cuyo límite global
+-- por archivo es 50 MB (no se puede subir más aunque el bucket lo permitiera).
 -- ============================================================================
 do $$ begin if to_regclass('storage.buckets') is not null then
  insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
- values('capacitaciones','capacitaciones',false,524288000,array['video/mp4','video/webm','video/quicktime','application/pdf'])
+ values('capacitaciones','capacitaciones',false,52428800,array['video/mp4','video/webm','video/quicktime','application/pdf'])
  on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
 end if; end $$;
 

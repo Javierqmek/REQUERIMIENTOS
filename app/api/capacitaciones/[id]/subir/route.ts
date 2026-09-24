@@ -1,20 +1,30 @@
-import { assertSameOrigin } from "@/lib/security/http";
+import { z } from "zod";
+import { HttpInputError, readJsonBody } from "@/lib/security/http";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentCapacitacionProfile } from "@/lib/capacitaciones/auth";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const BUCKET = "capacitaciones";
-const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+// 50 MB: límite global por archivo del plan gratuito de Supabase (no del bucket ni de la app).
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
+const VIDEO_TOO_BIG_MESSAGE = "El video debe pesar como máximo 50 MB. Comprímelo (por ejemplo a 720p) antes de subirlo.";
 
-// Sube el video o el PDF de apoyo a Storage (ruta determinista por capacitación) y actualiza la
-// fila. No se sobreescribe silenciosamente: un archivo nuevo reemplaza al anterior en Storage
-// (misma ruta fija, no versionado -- una capacitación en BORRADOR se puede corregir libremente;
-// una vez PUBLICADA, el capacitador ya no puede cambiar el video, ver RLS de capacitaciones_update
-// más la validación de estado aquí abajo).
+const schema = z.object({
+  tipo: z.enum(["video", "pdf"]),
+  nombre: z.string().trim().min(1).max(255),
+  tamano: z.number().int().positive(),
+  contentType: z.string().trim().min(1).max(200),
+});
+
+// Genera una URL de subida firmada: el navegador sube el archivo DIRECTO a Supabase Storage
+// (ver /subir/confirmar), no a través de esta función serverless -- en Vercel cada request a una
+// función tiene un límite de tamaño (4.5 MB) muy por debajo de un video, incluso con el límite
+// de 50 MB de este módulo (el máximo por archivo del plan gratuito de Supabase).
+// createSignedUploadUrl exige permiso "insert" vía RLS al momento de generarla (mismo chequeo
+// capacitador_id=auth.uid() que antes), así que la autorización no cambia, solo el transporte.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    assertSameOrigin(request);
     const profile = await getCurrentCapacitacionProfile();
     if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const id = (await params).id;
@@ -24,32 +34,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (cap.capacitador_id !== profile.id && profile.role !== "admin") return json({ error: "No autorizado." }, 403);
     if (cap.estado !== "BORRADOR") return json({ error: "Solo se puede reemplazar el material mientras está en borrador." }, 409);
 
-    const form = await request.formData();
-    const tipo = String(form.get("tipo") || "");
-    const file = form.get("archivo");
-    if (!(file instanceof File)) return json({ error: "Selecciona un archivo." }, 400);
+    const parsed = schema.safeParse(await readJsonBody(request, 4096));
+    if (!parsed.success) return json({ error: "Datos de archivo inválidos." }, 400);
+    const { tipo, nombre, tamano, contentType } = parsed.data;
+
     if (tipo === "video") {
-      if (file.size > MAX_VIDEO_BYTES) return json({ error: "El video debe pesar como máximo 500 MB." }, 413);
-      if (!file.type.startsWith("video/")) return json({ error: "El archivo debe ser un video." }, 400);
-      const path = `${id}/video.${(file.name.split(".").pop() || "mp4").toLowerCase()}`;
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const upload = await db.storage.from(BUCKET).upload(path, bytes, { contentType: file.type, upsert: true });
-      if (upload.error) return json({ error: "No se pudo subir el video." }, 400);
-      await db.from("capacitaciones").update({ video_path: path, video_nombre: file.name, video_bytes: bytes.length, updated_at: new Date().toISOString() }).eq("id", id);
-      return json({ ok: true });
+      if (tamano > MAX_VIDEO_BYTES) return json({ error: VIDEO_TOO_BIG_MESSAGE }, 413);
+      if (!contentType.startsWith("video/")) return json({ error: "El archivo debe ser un video." }, 400);
+      const ext = (nombre.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+      const path = `${id}/video.${ext}`;
+      const { data, error } = await db.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true });
+      if (error || !data) return json({ error: "No se pudo preparar la subida del video." }, 400);
+      return json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
     }
     if (tipo === "pdf") {
-      if (file.size > MAX_PDF_BYTES) return json({ error: "El PDF debe pesar como máximo 20 MB." }, 413);
-      if (file.type !== "application/pdf") return json({ error: "El archivo debe ser un PDF." }, 400);
+      if (tamano > MAX_PDF_BYTES) return json({ error: "El PDF debe pesar como máximo 20 MB." }, 413);
+      if (contentType !== "application/pdf") return json({ error: "El archivo debe ser un PDF." }, 400);
       const path = `${id}/material.pdf`;
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const upload = await db.storage.from(BUCKET).upload(path, bytes, { contentType: "application/pdf", upsert: true });
-      if (upload.error) return json({ error: "No se pudo subir el material." }, 400);
-      await db.from("capacitaciones").update({ material_pdf_path: path, material_pdf_nombre: file.name, updated_at: new Date().toISOString() }).eq("id", id);
-      return json({ ok: true });
+      const { data, error } = await db.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true });
+      if (error || !data) return json({ error: "No se pudo preparar la subida del material." }, 400);
+      return json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
     }
     return json({ error: "Tipo de archivo inválido." }, 400);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "No se pudo subir el archivo." }, 400);
+    if (error instanceof HttpInputError) return json({ error: error.message }, error.status);
+    return json({ error: error instanceof Error ? error.message : "No se pudo preparar la subida." }, 400);
   }
 }

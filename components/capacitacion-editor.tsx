@@ -10,6 +10,28 @@ interface Cliente { id: string; nombre: string; activo: boolean }
 interface Asignacion { id: string; cliente_id: string | null }
 
 const estadoLabel: Record<string, string> = { BORRADOR: "Borrador", PUBLICADA: "Publicada", ARCHIVADA: "Archivada" };
+// 50 MB: límite global por archivo del plan gratuito de Supabase (no del bucket ni de la app).
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+// Sube directo del navegador a Supabase Storage con la URL firmada (nunca pasa por una función
+// serverless de Vercel, que limita cada request a 4.5 MB -- muy por debajo de un video). Se usa
+// XMLHttpRequest en vez de fetch porque fetch no expone progreso de subida en el navegador.
+function subirDirectoAStorage(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
+    xhr.setRequestHeader("x-upsert", "true");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error(`No se pudo subir el archivo (${xhr.status}).`)); };
+    xhr.onerror = () => reject(new Error("Error de red al subir el archivo."));
+    const form = new FormData();
+    form.append("cacheControl", "3600");
+    form.append("", file);
+    xhr.send(form);
+  });
+}
 
 export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clientes }: {
   capacitacion: CapacitacionRow; preguntas: ExamenPreguntaAdmin[]; asignaciones: Asignacion[]; clientes: Cliente[];
@@ -17,18 +39,39 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
   const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [progreso, setProgreso] = useState<Partial<Record<"video" | "pdf", number>>>({});
   const puedeEditar = capacitacion.estado === "BORRADOR";
 
   async function subirArchivo(tipo: "video" | "pdf", file: File) {
-    setError(""); setBusy(tipo);
+    setError("");
+    const maxBytes = tipo === "video" ? MAX_VIDEO_BYTES : MAX_PDF_BYTES;
+    if (file.size > maxBytes) {
+      const pesoMb = (file.size / 1024 / 1024).toFixed(1);
+      setError(tipo === "video"
+        ? `El video pesa ${pesoMb} MB; el máximo permitido es 50 MB. Comprímelo (por ejemplo a 720p) antes de subirlo.`
+        : `El archivo pesa ${pesoMb} MB; el máximo permitido es ${maxBytes / 1024 / 1024} MB.`);
+      return;
+    }
+    setBusy(tipo); setProgreso(p => ({ ...p, [tipo]: 0 }));
     try {
-      const form = new FormData(); form.set("tipo", tipo); form.set("archivo", file);
-      const response = await fetch(`/api/capacitaciones/${capacitacion.id}/subir`, { method: "POST", body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo subir el archivo.");
+      const prep = await fetch(`/api/capacitaciones/${capacitacion.id}/subir`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo, nombre: file.name, tamano: file.size, contentType: file.type }),
+      });
+      const prepData = await prep.json();
+      if (!prep.ok) throw new Error(prepData.error || "No se pudo preparar la subida.");
+
+      await subirDirectoAStorage(prepData.signedUrl, file, pct => setProgreso(p => ({ ...p, [tipo]: pct })));
+
+      const confirm = await fetch(`/api/capacitaciones/${capacitacion.id}/subir/confirmar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo, nombre: file.name, tamano: file.size, path: prepData.path }),
+      });
+      const confirmData = await confirm.json();
+      if (!confirm.ok) throw new Error(confirmData.error || "No se pudo confirmar la subida.");
       router.refresh();
     } catch (ex) { setError(ex instanceof Error ? ex.message : "No se pudo subir el archivo."); }
-    finally { setBusy(null); }
+    finally { setBusy(null); setProgreso(p => ({ ...p, [tipo]: undefined })); }
   }
 
   async function eliminarPregunta(id: string) {
@@ -134,7 +177,11 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
             onChange={e => { const f = e.target.files?.[0]; if (f) subirArchivo("pdf", f); }} />
         </div>
       </div>
-      {(busy === "video" || busy === "pdf") && <p className="flex items-center gap-2 text-xs text-[#607089]"><LoaderCircle className="animate-spin" size={14} />Subiendo…</p>}
+      {(busy === "video" || busy === "pdf") && <div className="flex items-center gap-2 text-xs text-[#607089]">
+        <LoaderCircle className="animate-spin shrink-0" size={14} />
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#E9EEF5]"><div className="h-full bg-[#2563EB] transition-[width]" style={{ width: `${progreso[busy as "video" | "pdf"] ?? 0}%` }} /></div>
+        <span className="shrink-0">{progreso[busy as "video" | "pdf"] ?? 0}%</span>
+      </div>}
     </section>
 
     <section className="section-card space-y-4">

@@ -38,7 +38,11 @@ export async function updateSession(request: NextRequest, makeClient: typeof cre
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
     const pathname = request.nextUrl.pathname;
-    if ((error || !user) && pathname !== "/login") {
+    // Autoregistro de agentes: la página y su API deben ser accesibles SIN sesión (es justamente
+    // cómo un agente nuevo consigue una). No exponen ningún dato -- ver app/registro/page.tsx y
+    // app/api/capacitaciones/registro/route.ts para la validación real (DNI + código + rate limit).
+    const isPublicPath = pathname === "/login" || pathname === "/registro" || pathname === "/api/capacitaciones/registro";
+    if ((error || !user) && !isPublicPath) {
       if (pathname.startsWith("/api/")) return finish(NextResponse.json({ error: "Sesión requerida" }, { status: 401 }));
       return finish(NextResponse.redirect(new URL("/login", request.url)));
     }
