@@ -5,6 +5,7 @@ import { LogIn, LoaderCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { loginSchema } from "@/lib/validations";
 import { Alert } from "@/components/ui/alert";
+import { GoogleAuthButton } from "@/components/google-auth-button";
 
 export function LoginForm() {
   const router = useRouter();
@@ -28,5 +29,7 @@ export function LoginForm() {
     <div><label className="label" htmlFor="password">Contraseña</label><input className="input" id="password" name="password" type="password" autoComplete="current-password" required placeholder="••••••••" /></div>
     {error && <Alert kind="error">{error}</Alert>}
     <button className="btn btn-primary w-full" disabled={loading}>{loading ? <LoaderCircle className="animate-spin" /> : <LogIn size={19} />}{loading ? "Iniciando sesión..." : "Iniciar sesión"}</button>
+    <div className="flex items-center gap-3 text-xs text-[#8794A8]"><div className="h-px flex-1 bg-[#E3E9F1]" />o<div className="h-px flex-1 bg-[#E3E9F1]" /></div>
+    <GoogleAuthButton />
   </form>;
 }

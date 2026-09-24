@@ -1,0 +1,14 @@
+-- Rol nuevo para el registro por Google + DNI: cualquier cuenta de Auth creada vía OAuth de
+-- Google (raw_app_meta_data->>'provider'='google') recibe este rol hasta que vincule su DNI --
+-- ver 202609240007_registro_google_dni.sql, que redefine handle_new_user() para asignarlo.
+-- Necesita su PROPIA migración: un valor de enum recién agregado no puede usarse en la misma
+-- transacción que lo agregó (error 55P04, ver 202609240000_roles_capacitaciones.sql).
+--
+-- Por qué hace falta un rol nuevo y no basta con el default existente ('coordinador', que es el
+-- viejo 'supervisor' renombrado en 202609020003): getCurrentProfile() (lib/auth.ts) admite
+-- justamente a admin/coordinador/gerente. Si una cuenta de Google recién creada heredara ese
+-- default, entraría directo a todo el panel principal (Requerimientos/Vacaciones/Documentos)
+-- sin haber vinculado nada -- exactamente lo que debe evitarse. 'sin_vincular' no está en la
+-- whitelist de NINGÚN guard (ni lib/auth.ts ni lib/capacitaciones/auth.ts), así que una cuenta en
+-- ese estado no puede entrar a ninguna página privada, solo a /vincular.
+alter type public.user_role add value if not exists 'sin_vincular';

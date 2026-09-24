@@ -38,10 +38,12 @@ export async function updateSession(request: NextRequest, makeClient: typeof cre
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
     const pathname = request.nextUrl.pathname;
-    // Autoregistro de agentes: la página y su API deben ser accesibles SIN sesión (es justamente
-    // cómo un agente nuevo consigue una). No exponen ningún dato -- ver app/registro/page.tsx y
-    // app/api/capacitaciones/registro/route.ts para la validación real (DNI + código + rate limit).
-    const isPublicPath = pathname === "/login" || pathname === "/registro" || pathname === "/api/capacitaciones/registro";
+    // /login y /registro deben ser accesibles sin sesión (ahí vive el botón de Google). El callback
+    // de OAuth (/auth/callback) también: llega con el código de Google y todavía SIN sesión --
+    // recién la crea al intercambiar el código (ver app/auth/callback/route.ts). Ninguno expone
+    // datos privados. /vincular (donde se pide el DNI) SÍ exige sesión a propósito: solo se llega
+    // ahí después de autenticarse con Google.
+    const isPublicPath = pathname === "/login" || pathname === "/registro" || pathname === "/auth/callback";
     if ((error || !user) && !isPublicPath) {
       if (pathname.startsWith("/api/")) return finish(NextResponse.json({ error: "Sesión requerida" }, { status: 401 }));
       return finish(NextResponse.redirect(new URL("/login", request.url)));
