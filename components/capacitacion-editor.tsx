@@ -2,8 +2,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { LoaderCircle, Upload, Plus, Trash2, Check, FileText, BarChart3 } from "lucide-react";
+import Image from "next/image";
+import { LoaderCircle, Upload, Plus, Trash2, Check, FileText, BarChart3, Link2 } from "lucide-react";
 import { Alert } from "./ui/alert";
+import { extractYoutubeId } from "@/lib/capacitaciones/youtube";
 import type { CapacitacionRow, ExamenPreguntaAdmin } from "@/lib/capacitaciones/types";
 
 interface Cliente { id: string; nombre: string; activo: boolean }
@@ -40,6 +42,8 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [progreso, setProgreso] = useState<Partial<Record<"video" | "pdf", number>>>({});
+  const [fuenteVideo, setFuenteVideo] = useState<"archivo" | "youtube">(capacitacion.video_youtube_id ? "youtube" : "archivo");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const puedeEditar = capacitacion.estado === "BORRADOR";
 
   async function subirArchivo(tipo: "video" | "pdf", file: File) {
@@ -72,6 +76,22 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
       router.refresh();
     } catch (ex) { setError(ex instanceof Error ? ex.message : "No se pudo subir el archivo."); }
     finally { setBusy(null); setProgreso(p => ({ ...p, [tipo]: undefined })); }
+  }
+
+  async function guardarYoutube(url: string) {
+    setError("");
+    if (!extractYoutubeId(url)) { setError("Pega un enlace válido de YouTube (youtube.com o youtu.be)."); return; }
+    setBusy("youtube");
+    try {
+      const response = await fetch(`/api/capacitaciones/${capacitacion.id}/video-youtube`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo guardar el enlace.");
+      setYoutubeUrl("");
+      router.refresh();
+    } catch (ex) { setError(ex instanceof Error ? ex.message : "No se pudo guardar el enlace."); }
+    finally { setBusy(null); }
   }
 
   async function eliminarPregunta(id: string) {
@@ -169,9 +189,26 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
       <h2 className="text-sm font-semibold text-[#0B1F3A]">Material</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-1.5">
-          <label className="label" htmlFor="video-input">Video {capacitacion.video_nombre && <span className="font-normal text-[#607089]">— {capacitacion.video_nombre}</span>}</label>
-          <input className="input" id="video-input" type="file" accept="video/*" disabled={!puedeEditar || busy === "video"}
-            onChange={e => { const f = e.target.files?.[0]; if (f) subirArchivo("video", f); }} />
+          <span className="label">Video</span>
+          <div className="flex gap-1.5 text-xs font-medium">
+            <button type="button" className={`btn !px-2.5 !py-1.5 ${fuenteVideo === "archivo" ? "btn-primary" : "btn-secondary"}`} disabled={!puedeEditar} onClick={() => setFuenteVideo("archivo")}>Subir archivo</button>
+            <button type="button" className={`btn !px-2.5 !py-1.5 ${fuenteVideo === "youtube" ? "btn-primary" : "btn-secondary"}`} disabled={!puedeEditar} onClick={() => setFuenteVideo("youtube")}><Link2 size={14} />YouTube</button>
+          </div>
+          {fuenteVideo === "archivo"
+            ? <><input className="input" id="video-input" type="file" accept="video/*" disabled={!puedeEditar || busy === "video"}
+                onChange={e => { const f = e.target.files?.[0]; if (f) subirArchivo("video", f); }} />
+                {capacitacion.video_nombre && <span className="text-xs text-[#607089]">Archivo actual: {capacitacion.video_nombre}</span>}</>
+            : <div className="flex gap-1.5">
+                <input className="input" type="url" placeholder="https://youtu.be/… (recomendado: no listado)" value={youtubeUrl}
+                  onChange={e => setYoutubeUrl(e.target.value)} disabled={!puedeEditar || busy === "youtube"} />
+                <button type="button" className="btn btn-secondary shrink-0" disabled={!puedeEditar || busy === "youtube" || !youtubeUrl.trim()} onClick={() => guardarYoutube(youtubeUrl)}>
+                  {busy === "youtube" ? <LoaderCircle className="animate-spin" size={16} /> : "Guardar"}
+                </button>
+              </div>}
+          {capacitacion.video_youtube_id && <div className="flex items-center gap-2 text-xs text-[#607089]">
+            <Image src={`https://i.ytimg.com/vi/${capacitacion.video_youtube_id}/mqdefault.jpg`} alt="" width={64} height={40} className="rounded object-cover" unoptimized />
+            Video de YouTube configurado
+          </div>}
         </div>
         <div className="grid gap-1.5">
           <label className="label" htmlFor="pdf-input">Material PDF (opcional) {capacitacion.material_pdf_nombre && <span className="font-normal text-[#607089]">— {capacitacion.material_pdf_nombre}</span>}</label>

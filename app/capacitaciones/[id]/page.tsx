@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentCapacitacionProfile } from "@/lib/capacitaciones/auth";
@@ -13,9 +14,10 @@ export default async function CapacitacionDetallePage({ params }: { params: Prom
   const profile = await getCurrentCapacitacionProfile();
   if (!profile) redirect("/login");
   const db = await createClient();
-  const [{ data: cap }, { data: progreso }] = await Promise.all([
-    db.from("capacitaciones").select("id,titulo,descripcion,material_pdf_path,porcentaje_minimo_visto,nota_minima").eq("id", id).maybeSingle(),
+  const [{ data: cap }, { data: progreso }, nonce] = await Promise.all([
+    db.from("capacitaciones").select("id,titulo,descripcion,material_pdf_path,video_youtube_id,porcentaje_minimo_visto,nota_minima").eq("id", id).maybeSingle(),
     db.from("capacitacion_progreso").select("porcentaje_visto,video_completo").eq("capacitacion_id", id).eq("agente_id", profile.id).maybeSingle(),
+    headers().then(h => h.get("x-nonce")),
   ]);
   if (!cap) notFound();
 
@@ -32,6 +34,8 @@ export default async function CapacitacionDetallePage({ params }: { params: Prom
       porcentajeInicial={progreso?.porcentaje_visto ?? 0}
       videoCompleto={progreso?.video_completo ?? false}
       porcentajeMinimo={cap.porcentaje_minimo_visto}
+      videoYoutubeId={cap.video_youtube_id}
+      nonce={nonce}
     />
   </section>;
 }

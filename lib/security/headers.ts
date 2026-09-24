@@ -3,9 +3,9 @@ export function contentSecurityPolicy(nonce: string, supabaseUrl: string, produc
   const connect = [url.origin, url.origin.replace(/^http/, "ws")].join(" ");
   return [
     "default-src 'self'", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'none'",
-    "form-action 'self'", "frame-src 'none'",
+    "form-action 'self'", "frame-src https://www.youtube-nocookie.com",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${production ? "" : " 'unsafe-eval'"}`,
-    "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "font-src 'self'", "worker-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https://i.ytimg.com", "font-src 'self'", "worker-src 'self' blob:",
     `connect-src 'self' ${connect}${production ? "" : " ws://localhost:* ws://127.0.0.1:*"}`,
     ...(production ? ["upgrade-insecure-requests"] : []),
   ].join("; ");

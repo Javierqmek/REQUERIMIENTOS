@@ -1,15 +1,43 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { FileDown, FileSignature } from "lucide-react";
 import { Alert } from "./ui/alert";
 
-// Reporta el progreso real del video (posición actual / duración) al servidor cada vez que el
-// usuario pausa o cada ~10s mientras reproduce -- nunca confía en un "clic en play" como
-// evidencia de haberlo visto. El servidor decide si eso alcanza el % mínimo (registrar_progreso_video).
-export function CapacitacionVideoPlayer({ capacitacionId, tienePdf, porcentajeInicial, videoCompleto: videoCompletoInicial, porcentajeMinimo }: {
+// Tipos mínimos de la YouTube IFrame API (no hay @types oficiales instalados) -- solo lo que
+// realmente se usa, para no recurrir a "any".
+interface YoutubePlayerInstance {
+  getCurrentTime(): number;
+  getDuration(): number;
+  destroy(): void;
+}
+interface YoutubePlayerOptions {
+  host: string;
+  videoId: string;
+  playerVars: Record<string, number | string>;
+  events: { onStateChange?: (event: { data: number }) => void };
+}
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (el: HTMLElement, options: YoutubePlayerOptions) => YoutubePlayerInstance;
+      PlayerState: { PLAYING: number; PAUSED: number; ENDED: number; BUFFERING: number; CUED: number };
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+// Reporta el progreso real del video al servidor -- nunca confía en un "clic en play" como
+// evidencia de haberlo visto. El servidor decide si eso alcanza el % mínimo
+// (registrar_progreso_video). Para el video subido a Storage se usa la posición del reproductor
+// (currentTime/duration); para YouTube se exige algo más estricto: tiempo REALMENTE reproducido
+// de forma continua (ver YoutubePlayer), así que saltar la barra hacia el final no cuenta como
+// haberlo visto.
+export function CapacitacionVideoPlayer({ capacitacionId, tienePdf, porcentajeInicial, videoCompleto: videoCompletoInicial, porcentajeMinimo, videoYoutubeId, nonce }: {
   capacitacionId: string; tienePdf: boolean; porcentajeInicial: number; videoCompleto: boolean; porcentajeMinimo: number;
+  videoYoutubeId: string | null; nonce: string | null;
 }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -49,7 +77,9 @@ export function CapacitacionVideoPlayer({ capacitacionId, tienePdf, porcentajeIn
 
   return <div className="space-y-3">
     <div className="overflow-hidden rounded-xl border border-[#DCE3EC] bg-black">
-      <video ref={videoRef} controls className="aspect-video w-full" src={`/api/capacitaciones/${capacitacionId}/archivo`} onTimeUpdate={onTimeUpdate} onPause={onPauseOrEnd} onEnded={onPauseOrEnd} />
+      {videoYoutubeId
+        ? <YoutubePlayer videoId={videoYoutubeId} nonce={nonce} onPorcentaje={(pct) => void reportar(pct)} />
+        : <video ref={videoRef} controls className="aspect-video w-full" src={`/api/capacitaciones/${capacitacionId}/archivo`} onTimeUpdate={onTimeUpdate} onPause={onPauseOrEnd} onEnded={onPauseOrEnd} />}
     </div>
     <div className="flex items-center gap-2 text-xs text-[#607089]">
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#E9EEF5]"><div className="h-full bg-[#2563EB]" style={{ width: `${Math.min(100, porcentaje)}%` }} /></div>
@@ -63,4 +93,86 @@ export function CapacitacionVideoPlayer({ capacitacionId, tienePdf, porcentajeIn
         : <button className="btn btn-secondary" disabled title={`Debes ver al menos el ${porcentajeMinimo}% del video`}>El examen se activa al ver el {porcentajeMinimo}%</button>}
     </div>
   </div>;
+}
+
+// Reproductor de YouTube en modo privacidad (youtube-nocookie.com, sin cookies de seguimiento),
+// rel=0 (sin videos relacionados al terminar), sin anotaciones ni marca de agua clicable, y sin
+// mostrar el enlace directo en ningún texto ni atributo visible en pantalla -- solo el div que la
+// API reemplaza por el iframe.
+//
+// El progreso NUNCA se calcula por posición (currentTime/duration): eso permitiría arrastrar la
+// barra hasta el final y "fingir" el 80% en un segundo. En su lugar se acumula tiempo REALMENTE
+// reproducido -- cada medio segundo se compara currentTime contra la lectura anterior y solo
+// suma si el salto es pequeño y hacia adelante (reproducción continua real); un salto grande
+// (arrastrar la barra) o hacia atrás no acumula nada. Más estricto que el video subido, que sí
+// confía en la posición.
+function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonce: string | null; onPorcentaje: (pct: number) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<YoutubePlayerInstance | null>(null);
+  const accumulatedRef = useRef(0);
+  const lastTimeRef = useRef(0);
+  const lastPctRef = useRef(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let destroyed = false;
+
+    function calcularYReportar() {
+      const player = playerRef.current;
+      if (!player) return;
+      const duration = player.getDuration();
+      if (!duration) return;
+      const pct = Math.floor((Math.min(accumulatedRef.current, duration) / duration) * 100);
+      if (pct - lastPctRef.current >= 10 || pct >= 80) { lastPctRef.current = pct; onPorcentaje(pct); }
+    }
+    function detenerSeguimiento() {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      calcularYReportar();
+    }
+    function iniciarSeguimiento() {
+      if (pollRef.current) return;
+      lastTimeRef.current = playerRef.current?.getCurrentTime() ?? 0;
+      pollRef.current = setInterval(() => {
+        const player = playerRef.current; if (!player) return;
+        const current = player.getCurrentTime();
+        const delta = current - lastTimeRef.current;
+        if (delta > 0 && delta < 2) accumulatedRef.current += delta;
+        lastTimeRef.current = current;
+        calcularYReportar();
+      }, 500);
+    }
+    function crearReproductor() {
+      if (destroyed || !containerRef.current || !window.YT) return;
+      playerRef.current = new window.YT.Player(containerRef.current, {
+        host: "https://www.youtube-nocookie.com",
+        videoId,
+        playerVars: { rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, disablekb: 1, origin: window.location.origin },
+        events: {
+          onStateChange: (event) => {
+            if (window.YT && event.data === window.YT.PlayerState.PLAYING) iniciarSeguimiento();
+            else detenerSeguimiento();
+          },
+        },
+      });
+    }
+
+    if (window.YT?.Player) crearReproductor();
+    else {
+      const previous = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { previous?.(); crearReproductor(); };
+    }
+
+    return () => {
+      destroyed = true;
+      detenerSeguimiento();
+      playerRef.current?.destroy();
+      playerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
+
+  return <>
+    <Script src="https://www.youtube.com/iframe_api" strategy="afterInteractive" nonce={nonce ?? undefined} />
+    <div ref={containerRef} className="aspect-video w-full" />
+  </>;
 }

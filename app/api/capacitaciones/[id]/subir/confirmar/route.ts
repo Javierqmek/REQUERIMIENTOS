@@ -43,7 +43,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!listado?.some(f => f.name === filename)) return json({ error: "No encontramos el archivo subido. Intenta de nuevo." }, 409);
 
     if (tipo === "video") {
-      await db.from("capacitaciones").update({ video_path: path, video_nombre: nombre, video_bytes: tamano, updated_at: new Date().toISOString() }).eq("id", id);
+      // Un video subido reemplaza cualquier enlace de YouTube guardado antes (una sola fuente a la vez).
+      await db.from("capacitaciones").update({ video_path: path, video_nombre: nombre, video_bytes: tamano, video_youtube_id: null, updated_at: new Date().toISOString() }).eq("id", id);
     } else {
       await db.from("capacitaciones").update({ material_pdf_path: path, material_pdf_nombre: nombre, updated_at: new Date().toISOString() }).eq("id", id);
     }

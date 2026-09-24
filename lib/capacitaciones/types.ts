@@ -41,6 +41,7 @@ export interface CapacitacionRow {
   capacitador_id: string;
   video_path: string | null;
   video_nombre: string | null;
+  video_youtube_id: string | null;
   material_pdf_path: string | null;
   material_pdf_nombre: string | null;
   porcentaje_minimo_visto: number;

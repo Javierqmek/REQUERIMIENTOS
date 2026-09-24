@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   distDir: isVercel ? ".next" : process.env.NEXT_DIST_DIR || ".next-build",
   reactStrictMode: true,
   poweredByHeader: false,
+  images: { remotePatterns: [{ protocol: "https", hostname: "i.ytimg.com" }] },
   async headers() {
     return [{ source: "/:path*", headers: [
       ...securityHeaders,
