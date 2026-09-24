@@ -15,9 +15,13 @@ export function LoginForm() {
     const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
     if (!parsed.success) return setError(parsed.error.issues[0].message);
     setLoading(true);
-    const { error } = await createClient().auth.signInWithPassword(parsed.data);
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
     if (error) { setError("Correo o contraseña incorrectos."); setLoading(false); return; }
-    router.replace("/inicio"); router.refresh();
+    // agente/capacitador viven en su propio módulo (/capacitaciones), fuera del shell principal.
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).single();
+    const target = profile?.role === "agente" || profile?.role === "capacitador" ? "/capacitaciones" : "/inicio";
+    router.replace(target); router.refresh();
   }
   return <form action={submit} className="space-y-5">
     <div><label className="label" htmlFor="email">Correo electrónico</label><input className="input" id="email" name="email" type="email" autoComplete="email" required placeholder="nombre@empresa.com" /></div>

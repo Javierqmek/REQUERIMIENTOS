@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LoginForm } from "@/components/login-form";
 import { Shirt } from "lucide-react";
 
@@ -11,6 +12,7 @@ export default function LoginPage() {
           <p className="mt-1.5 text-sm text-[#607089]">Ingresa con tu cuenta corporativa</p>
         </div>
         <LoginForm />
+        <p className="mt-5 text-center text-sm text-[#607089]">¿Eres agente y no tienes cuenta de Capacitaciones? <Link href="/registro" className="font-medium text-[#174EA6] hover:underline">Regístrate aquí</Link></p>
       </section>
     </main>
   );

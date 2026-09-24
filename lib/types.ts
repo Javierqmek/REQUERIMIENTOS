@@ -1,4 +1,4 @@
-export type Role = "coordinador" | "admin" | "gerente";
+export type Role = "coordinador" | "admin" | "gerente" | "agente" | "capacitador";
 export type Estado = "Pendiente" | "Atendido" | "Observado";
 
 export interface Profile { id: string; email: string; nombre: string; role: Role }
