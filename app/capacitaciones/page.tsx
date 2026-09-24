@@ -44,7 +44,7 @@ function CapacitacionCard({ row }: { row: CapacitacionAgenteRow }) {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <strong className="text-sm font-semibold text-[#0B1F3A]">{row.titulo}</strong>
       {row.completada
-        ? <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800"><CheckCircle2 size={13} />Aprobado{row.ultima_nota != null ? ` (nota ${row.ultima_nota})` : ""}</span>
+        ? <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800"><CheckCircle2 size={13} />Aprobado{row.ultima_nota != null ? ` (nota ${row.ultima_nota}/20)` : ""}</span>
         : <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">{row.video_completo ? "Examen pendiente" : "Nuevo"}</span>}
     </div>
     <p className="text-xs text-[#607089]">{row.porcentaje_minimo_visto}% mínimo del video{row.fecha_vencimiento ? <> · <CalendarClock className="inline" size={12} /> Vence el {formatDate(row.fecha_vencimiento)}</> : ""}</p>

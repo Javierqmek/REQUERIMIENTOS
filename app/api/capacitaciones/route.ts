@@ -8,7 +8,7 @@ const schema = z.object({
   titulo: z.string().trim().min(3).max(200),
   descripcion: z.string().trim().max(2000).optional().nullable(),
   porcentaje_minimo_visto: z.number().int().min(1).max(100).default(80),
-  nota_minima: z.number().int().min(0).default(3),
+  nota_minima: z.number().int().min(0).max(20).default(14),
   fecha_vencimiento: z.string().optional().nullable(),
 });
 

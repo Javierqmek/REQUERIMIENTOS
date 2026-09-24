@@ -32,7 +32,7 @@ export default async function GestionCapacitacionesPage() {
       ? <div className="card px-5 py-8 text-center"><FileText className="mx-auto text-[#8794A8]" size={28} /><p className="mt-3 text-sm font-medium text-[#45556D]">Todavía no hay capacitaciones.</p></div>
       : <div className="grid gap-2.5">{rows.map(row => <Link key={row.id} href={`/capacitaciones/gestion/${row.id}`} className="card grid gap-1.5 p-4 hover:border-[#B9C9DF]">
           <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-semibold text-[#0B1F3A]">{row.titulo}</strong><span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-semibold ${estadoStyle[row.estado]}`}>{estadoLabel[row.estado]}</span></div>
-          <p className="text-xs text-[#607089]">{new Intl.DateTimeFormat("es-PE", { dateStyle: "medium" }).format(new Date(row.created_at))} · Nota mínima {row.nota_minima} · {row.porcentaje_minimo_visto}% del video</p>
+          <p className="text-xs text-[#607089]">{new Intl.DateTimeFormat("es-PE", { dateStyle: "medium" }).format(new Date(row.created_at))} · Nota mínima {row.nota_minima}/20 · {row.porcentaje_minimo_visto}% del video</p>
         </Link>)}</div>}
   </section>;
 }

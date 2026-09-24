@@ -94,6 +94,21 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
     finally { setBusy(null); }
   }
 
+  async function guardarNotaMinima(valor: number) {
+    setError("");
+    if (!Number.isFinite(valor) || valor < 0 || valor > 20) { setError("La nota mínima debe estar entre 0 y 20."); return; }
+    setBusy("nota-minima");
+    try {
+      const response = await fetch(`/api/capacitaciones/${capacitacion.id}/nota-minima`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nota_minima: valor }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo actualizar la nota mínima.");
+      router.refresh();
+    } catch (ex) { setError(ex instanceof Error ? ex.message : "No se pudo actualizar la nota mínima."); }
+    finally { setBusy(null); }
+  }
+
   async function eliminarPregunta(id: string) {
     setError(""); setBusy(`pregunta-${id}`);
     try {
@@ -225,6 +240,19 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
 
     <section className="section-card space-y-4">
       <h2 className="text-sm font-semibold text-[#0B1F3A]">Examen ({preguntas.length} pregunta{preguntas.length === 1 ? "" : "s"})</h2>
+      <form className="flex flex-wrap items-end gap-2 border-b border-[#E3E9F1] pb-4" onSubmit={e => {
+        e.preventDefault();
+        const input = e.currentTarget.elements.namedItem("nota_minima") as HTMLInputElement;
+        guardarNotaMinima(Number(input.value));
+      }}>
+        <div>
+          <label className="label" htmlFor="nota-minima-input">Nota mínima para aprobar (0 a 20)</label>
+          <input key={capacitacion.nota_minima} className="input w-28" id="nota-minima-input" name="nota_minima" type="number" min={0} max={20}
+            defaultValue={capacitacion.nota_minima} disabled={!puedeEditar || busy === "nota-minima"} />
+          <p className="mt-1 text-xs text-[#8794A8]">{preguntas.length > 0 ? `Cada pregunta vale ${(20 / preguntas.length).toFixed(1)} puntos.` : "Agrega preguntas para ver cuánto vale cada una."}</p>
+        </div>
+        {puedeEditar && <button className="btn btn-secondary" disabled={busy === "nota-minima"}>{busy === "nota-minima" ? <LoaderCircle className="animate-spin" size={16} /> : "Guardar"}</button>}
+      </form>
       {preguntas.length > 0 && <div className="grid gap-2.5">{preguntas.map(p => <div key={p.id} className="card p-3.5">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-[#0B1F3A]">{p.enunciado}</p>

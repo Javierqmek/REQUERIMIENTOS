@@ -34,7 +34,7 @@ export default async function ReporteCapacitacionPage({ params }: { params: Prom
       : <div className="card overflow-x-auto p-0">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-[#E3E9F1] text-xs font-semibold uppercase tracking-wide text-[#8794A8]">
-              <tr><th className="px-4 py-3">Agente</th><th className="px-4 py-3">Código</th><th className="px-4 py-3">% video visto</th><th className="px-4 py-3">Video completo</th><th className="px-4 py-3">Intentos</th><th className="px-4 py-3">Mejor nota</th><th className="px-4 py-3">Resultado</th></tr>
+              <tr><th className="px-4 py-3">Agente</th><th className="px-4 py-3">Código</th><th className="px-4 py-3">% video visto</th><th className="px-4 py-3">Video completo</th><th className="px-4 py-3">Intentos</th><th className="px-4 py-3">Mejor nota (0-20)</th><th className="px-4 py-3">Resultado</th></tr>
             </thead>
             <tbody>
               {filas.map(f => <tr key={f.agente_personal_id} className="border-b border-[#EEF2F7] last:border-0">
@@ -43,7 +43,7 @@ export default async function ReporteCapacitacionPage({ params }: { params: Prom
                 <td className="px-4 py-3">{f.porcentaje_visto}%</td>
                 <td className="px-4 py-3">{f.video_completo ? "Sí" : "No"}</td>
                 <td className="px-4 py-3">{f.intentos}</td>
-                <td className="px-4 py-3">{f.mejor_nota ?? "—"}</td>
+                <td className="px-4 py-3">{f.mejor_nota != null ? `${f.mejor_nota}/20` : "—"}</td>
                 <td className="px-4 py-3">{f.aprobado === null ? <span className="text-[#8794A8]">Sin rendir</span> : f.aprobado ? <span className="font-semibold text-emerald-700">Aprobado</span> : <span className="font-semibold text-[#C53030]">Desaprobado</span>}</td>
               </tr>)}
             </tbody>

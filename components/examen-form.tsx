@@ -34,8 +34,8 @@ export function ExamenForm({ capacitacionId, preguntas }: { capacitacionId: stri
     <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${resultado.aprobado ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-[#C53030]"}`}>
       {resultado.aprobado ? <CheckCircle2 size={30} /> : <XCircle size={30} />}
     </div>
-    <h2 className="mt-4 text-2xl font-semibold text-[#0B1F3A]">{resultado.puntaje}/{resultado.total}</h2>
-    <p className="mt-1 text-sm text-[#607089]">{resultado.aprobado ? `¡Aprobado! Superaste la nota mínima de ${resultado.nota_minima}.` : `No alcanzaste la nota mínima de ${resultado.nota_minima}. Puedes volver a intentarlo.`}</p>
+    <h2 className="mt-4 text-2xl font-semibold text-[#0B1F3A]">Tu nota: {resultado.nota}/20 – {resultado.aprobado ? "Aprobado" : "Desaprobado"}</h2>
+    <p className="mt-1 text-sm text-[#607089]">{resultado.aciertos} de {resultado.total} respuestas correctas. {resultado.aprobado ? `Superaste la nota mínima de ${resultado.nota_minima}.` : `No alcanzaste la nota mínima de ${resultado.nota_minima}. Puedes volver a intentarlo.`}</p>
     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
       {!resultado.aprobado && <button className="btn btn-secondary" onClick={() => { setResultado(null); setRespuestas({}); }}>Reintentar</button>}
       <button className="btn btn-primary" onClick={() => { router.push("/capacitaciones"); router.refresh(); }}>Volver al inicio</button>

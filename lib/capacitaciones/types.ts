@@ -20,7 +20,7 @@ export interface ExamenPregunta {
 }
 export interface ExamenIniciado { preguntas: ExamenPregunta[] }
 export interface ExamenResultado {
-  intento_id: string; puntaje: number; total: number; nota_minima: number; aprobado: boolean; numero_intento: number;
+  intento_id: string; aciertos: number; total: number; nota: number; nota_minima: number; aprobado: boolean; numero_intento: number;
 }
 
 export interface ReporteAgenteFila {

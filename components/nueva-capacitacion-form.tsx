@@ -16,7 +16,7 @@ export function NuevaCapacitacionForm() {
         body: JSON.stringify({
           titulo: formData.get("titulo"), descripcion: formData.get("descripcion") || null,
           porcentaje_minimo_visto: Number(formData.get("porcentaje_minimo_visto") || 80),
-          nota_minima: Number(formData.get("nota_minima") || 3),
+          nota_minima: Number(formData.get("nota_minima") || 14),
           fecha_vencimiento: formData.get("fecha_vencimiento") || null,
         }),
       });
@@ -33,7 +33,7 @@ export function NuevaCapacitacionForm() {
     <div><label className="label" htmlFor="descripcion">Descripción (opcional)</label><textarea className="input min-h-24 resize-y py-3" id="descripcion" name="descripcion" maxLength={2000} /></div>
     <div className="grid gap-4 sm:grid-cols-3">
       <div><label className="label" htmlFor="porcentaje_minimo_visto">% mínimo del video</label><input className="input" id="porcentaje_minimo_visto" name="porcentaje_minimo_visto" type="number" min={1} max={100} defaultValue={80} /></div>
-      <div><label className="label" htmlFor="nota_minima">Nota mínima (aciertos)</label><input className="input" id="nota_minima" name="nota_minima" type="number" min={0} defaultValue={3} /></div>
+      <div><label className="label" htmlFor="nota_minima">Nota mínima para aprobar (0 a 20)</label><input className="input" id="nota_minima" name="nota_minima" type="number" min={0} max={20} defaultValue={14} /></div>
       <div><label className="label" htmlFor="fecha_vencimiento">Vence (opcional)</label><input className="input" id="fecha_vencimiento" name="fecha_vencimiento" type="date" /></div>
     </div>
     {error && <Alert kind="error">{error}</Alert>}
