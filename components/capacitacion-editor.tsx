@@ -162,6 +162,8 @@ export function CapacitacionEditor({ capacitacion, preguntas, asignaciones, clie
 
     {error && <Alert kind="error">{error}</Alert>}
     {!puedeEditar && <Alert kind="info">Esta capacitación ya está {estadoLabel[capacitacion.estado].toLowerCase()}; el material y las preguntas ya no se pueden modificar.</Alert>}
+    {capacitacion.estado === "BORRADOR" && <Alert kind="warning">No publicada: ningún agente puede verla todavía. Publícala cuando tenga video, examen y asignación listos.</Alert>}
+    {asignaciones.length === 0 && <Alert kind="warning">Sin asignar: ningún agente la verá hasta que la asignes (a un cliente o de forma global), aunque esté publicada.</Alert>}
 
     <section className="section-card space-y-3">
       <h2 className="text-sm font-semibold text-[#0B1F3A]">Material</h2>

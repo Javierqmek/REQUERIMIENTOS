@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname,useRouter } from "next/navigation";
-import { ChevronDown,ClipboardList,FileSignature,Home,LogOut,PenLine,ShieldCheck,Shirt,UserRound } from "lucide-react";
+import { ChevronDown,ClipboardList,FileSignature,GraduationCap,Home,LogOut,PenLine,ShieldCheck,Shirt,UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -15,6 +15,7 @@ export function AppShell({profile,children}:{profile:Profile;children:React.Reac
     {href:"/inicio",label:"Inicio",icon:Home},
     ...(["admin","coordinador"].includes(profile.role)?[{href:"/requerimientos",label:"Mis requerimientos",icon:ClipboardList}]:[]),
     {href:"/documentos",label:"Documentos",icon:FileSignature},
+    ...(profile.role==="admin"?[{href:"/capacitaciones/gestion",label:"Capacitaciones",icon:GraduationCap}]:[]),
     ...(profile.role==="admin"?[{href:"/admin/requerimientos",label:"Administración",icon:ShieldCheck}]:[]),
   ];
   useEffect(()=>{function close(event:MouseEvent){if(menuRef.current&&!menuRef.current.contains(event.target as Node))setMenuOpen(false)}document.addEventListener("mousedown",close);return()=>document.removeEventListener("mousedown",close)},[]);

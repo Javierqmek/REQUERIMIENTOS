@@ -18,6 +18,7 @@ export default async function CapacitacionesAgentePage() {
   if (profile.role === "admin" || profile.role === "capacitador") redirect("/capacitaciones/gestion");
   const db = await createClient();
   const { data, error } = await db.rpc("listar_capacitaciones_agente");
+  if (error) console.error("[capacitaciones] listar_capacitaciones_agente falló:", error.message);
   const rows = (data || []) as CapacitacionAgenteRow[];
   const pendientes = rows.filter(r => !r.completada);
   const completadas = rows.filter(r => r.completada);
