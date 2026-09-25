@@ -1,3 +1,4 @@
+import { esAdminUniformes } from "@/lib/roles";
 import { z } from "zod";
 import { HttpInputError, readJsonBody } from "@/lib/security/http";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -21,7 +22,7 @@ function errorResponse(error: unknown) {
 export function makeAdminListHandler(deps: Dependencies) {
   return async (request: Request) => {
     try {
-      if ((await deps.getProfile())?.role !== "admin") return json({ error: "No autorizado" }, 403);
+      if (!esAdminUniformes((await deps.getProfile())?.role)) return json({ error: "No autorizado" }, 403);
       const { filters, page } = parseAdminQuery(new URL(request.url).searchParams);
       return json(await getAdminResults(await deps.getDb(), filters, page, request.signal));
     } catch (error) { return errorResponse(error); }
@@ -30,7 +31,7 @@ export function makeAdminListHandler(deps: Dependencies) {
 export function makeAdminUpdateHandler(deps: Dependencies) {
   return async (request: Request) => {
     try {
-      if ((await deps.getProfile())?.role !== "admin") return json({ error: "No autorizado" }, 403);
+      if (!esAdminUniformes((await deps.getProfile())?.role)) return json({ error: "No autorizado" }, 403);
       const input = z.object({ id: z.string().uuid(), estado: z.enum(ADMIN_STATES) }).strict().parse(await readJsonBody(request, 4096));
       const db = await deps.getDb();
       const { data, error } = await db.from("requerimientos").update({ estado: input.estado }).eq("id", input.id).select("id,estado").single();
@@ -42,7 +43,7 @@ export function makeAdminUpdateHandler(deps: Dependencies) {
 export function makeAdminDeleteHandler(deps: Dependencies, enabled = allowTestRequirementDeletion) {
   return async (request: Request) => {
     try {
-      if ((await deps.getProfile())?.role !== "admin") return json({ error: "No autorizado" }, 403);
+      if (!esAdminUniformes((await deps.getProfile())?.role)) return json({ error: "No autorizado" }, 403);
       if (!enabled()) return json({ error: "La eliminación de requerimientos de prueba está deshabilitada." }, 403);
       const input = z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }).strict().parse(await readJsonBody(request, 8192));
       if (new Set(input.ids).size !== input.ids.length) return json({ error: "No repitas requerimientos." }, 400);
@@ -55,7 +56,7 @@ export function makeAdminDeleteHandler(deps: Dependencies, enabled = allowTestRe
 export function makeSidigeHandler(deps: Dependencies) {
   return async (request: Request) => {
     try {
-      if ((await deps.getProfile())?.role !== "admin") return json({ error: "No autorizado" }, 403);
+      if (!esAdminUniformes((await deps.getProfile())?.role)) return json({ error: "No autorizado" }, 403);
       const { filters } = parseAdminQuery(new URL(request.url).searchParams);
       const bytes = await buildSidigeWorkbook(exportRequirements(await deps.getDb(), filters, request.signal), request.signal);
       return new Response(new Uint8Array(bytes), { headers: {

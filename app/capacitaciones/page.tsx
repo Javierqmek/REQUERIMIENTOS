@@ -15,7 +15,7 @@ function formatDate(value: string) {
 export default async function CapacitacionesAgentePage() {
   const profile = await getCurrentCapacitacionProfile();
   if (!profile) redirect("/login");
-  if (profile.role === "admin" || profile.role === "capacitador") redirect("/capacitaciones/gestion");
+  if (profile.role === "superadmin" || profile.role === "capacitador") redirect("/capacitaciones/gestion");
   const db = await createClient();
   const { data, error } = await db.rpc("listar_capacitaciones_agente");
   if (error) console.error("[capacitaciones] listar_capacitaciones_agente falló:", error.message);

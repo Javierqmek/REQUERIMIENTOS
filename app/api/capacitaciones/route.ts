@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
+    if (!profile || (profile.role !== "superadmin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const parsed = schema.safeParse(await readJsonBody(request, 8192));
     if (!parsed.success) return json({ error: parsed.error.issues[0].message }, 400);
     const db = await createClient();

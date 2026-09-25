@@ -3,11 +3,11 @@ import { CalendarDays, FileSignature, FileText, PlaneTakeoff } from "lucide-reac
 import type { PapeletaRow } from "@/lib/vacations/types";
 import { PapeletaEstadoBadge } from "./papeleta-estado-badge";
 
-// Tarjeta compacta ÚNICA para los tres roles (coordinador/admin/gerente): colaborador, código,
+// Tarjeta compacta ÚNICA para los tres roles (coordinador/superadmin/gerente): colaborador, código,
 // estado, fecha de registro, coordinador (salvo para el propio coordinador), cliente, unidad y
 // "Ver detalle". Todo lo demás (físicas, venta, días, reemplazo, provincia) vive solo en el
 // detalle -- nunca se vuelve a mostrar aquí. "Firmar" se ofrece al gerente cuando corresponde.
-export function VacationPapeletaList({ rows, role }: { rows: PapeletaRow[]; role: "coordinador" | "admin" | "gerente" }) {
+export function VacationPapeletaList({ rows, role }: { rows: PapeletaRow[]; role: "coordinador" | "superadmin" | "gerente" }) {
   if (!rows.length) return <div className="card px-5 py-8 text-center">
     <FileText className="mx-auto text-[#8794A8]" size={28} />
     <p className="mt-3 text-sm font-medium text-[#45556D]">No hay papeletas de vacaciones para los filtros seleccionados.</p>

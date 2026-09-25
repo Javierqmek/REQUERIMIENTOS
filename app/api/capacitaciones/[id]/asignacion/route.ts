@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     assertSameOrigin(request);
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
+    if (!profile || (profile.role !== "superadmin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const id = (await params).id;
     const body = await readJsonBody(request, 512) as { cliente_id?: string | null };
     const clienteId = body.cliente_id || null;
@@ -26,7 +26,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     assertSameOrigin(request);
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
+    if (!profile || (profile.role !== "superadmin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const id = (await params).id;
     const body = await readJsonBody(request, 512) as { asignacion_id?: string };
     if (!body.asignacion_id) return json({ error: "Falta la asignación a quitar." }, 400);

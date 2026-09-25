@@ -16,7 +16,7 @@ export const revalidate = 0;
 // es es_prueba=true (documentos reales, es_prueba=false, nunca aparecen aquí ni son borrables).
 export default async function VacationTestMaintenancePage() {
   const profile = await getCurrentProfile();
-  if (!profile || profile.role !== "admin") redirect("/documentos/vacaciones");
+  if (!profile || profile.role !== "superadmin") redirect("/documentos/vacaciones");
   const db = await createClient();
   const [{ data }, { data: pending }] = await Promise.all([
     db.from("papeletas_vacaciones").select("id,colaborador_nombre,colaborador_codigo,estado,created_at")

@@ -10,7 +10,7 @@ export const revalidate = 0;
 export default async function AgentesVinculadosPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const profile = await getCurrentCapacitacionProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin") redirect("/capacitaciones/gestion");
+  if (profile.role !== "superadmin") redirect("/capacitaciones/gestion");
   const { q } = await searchParams;
   const busqueda = q?.trim() || "";
   const db = await createClient();

@@ -5,7 +5,7 @@ import { NuevaCapacitacionForm } from "@/components/nueva-capacitacion-form";
 export default async function NuevaCapacitacionPage() {
   const profile = await getCurrentCapacitacionProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin" && profile.role !== "capacitador") redirect("/capacitaciones");
+  if (profile.role !== "superadmin" && profile.role !== "capacitador") redirect("/capacitaciones");
 
   return <section>
     <header className="page-header">

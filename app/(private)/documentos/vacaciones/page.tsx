@@ -48,7 +48,7 @@ export default async function VacationRequestsPage({ searchParams }: { searchPar
         falla silenciosa es indistinguible de "no hay papeletas" para quien la mira. */}
     {listError || !listResult ? <Alert kind="error">No pudimos consultar las papeletas de vacaciones. Intenta recargar la página.</Alert> : <>
       <p className="mb-2.5 text-xs font-medium text-[#607089]">{listResult.total} resultado{listResult.total === 1 ? "" : "s"}</p>
-      <VacationPapeletaList rows={listResult.rows} role={profile.role as "coordinador" | "admin" | "gerente"} />
+      <VacationPapeletaList rows={listResult.rows} role={profile.role as "coordinador" | "superadmin" | "gerente"} />
       {listResult.total > 0 && <nav className="mt-4 flex items-center justify-between gap-3" aria-label="Paginación">
         <Link aria-disabled={page <= 1} className={`btn btn-secondary px-3 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
           href={`?${new URLSearchParams({ ...Object.fromEntries(params), page: String(page - 1) })}`}>Anterior</Link>

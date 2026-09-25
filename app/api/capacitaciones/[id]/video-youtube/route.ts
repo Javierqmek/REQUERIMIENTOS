@@ -14,12 +14,12 @@ const schema = z.object({ url: z.string().trim().min(1).max(500) });
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
+    if (!profile || (profile.role !== "superadmin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const id = (await params).id;
     const db = await createClient();
     const { data: cap } = await db.from("capacitaciones").select("id,capacitador_id,estado").eq("id", id).maybeSingle();
     if (!cap) return json({ error: "Capacitación no encontrada." }, 404);
-    if (cap.capacitador_id !== profile.id && profile.role !== "admin") return json({ error: "No autorizado." }, 403);
+    if (cap.capacitador_id !== profile.id && profile.role !== "superadmin") return json({ error: "No autorizado." }, 403);
     if (cap.estado !== "BORRADOR") return json({ error: "Solo se puede reemplazar el material mientras está en borrador." }, 409);
 
     const parsed = schema.safeParse(await readJsonBody(request, 2048));

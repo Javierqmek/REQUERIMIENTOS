@@ -12,7 +12,7 @@ const schema = z.object({ nota_minima: z.number().int().min(0).max(20) });
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
+    if (!profile || (profile.role !== "superadmin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const id = (await params).id;
     const parsed = schema.safeParse(await readJsonBody(request, 512));
     if (!parsed.success) return json({ error: "La nota mínima debe estar entre 0 y 20." }, 400);

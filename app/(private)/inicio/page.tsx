@@ -8,8 +8,13 @@ const uniformOptions = [
 ];
 export default async function InicioPage() {
   const profile = await getCurrentProfile();
+  // admin quedó restringido a uniformes (Mis requerimientos + Administración): Documentos
+  // (incluidas Vacaciones y Papeletas) no es para admin, así que Inicio no debe mostrarle ese
+  // acceso -- ver app/(private)/documentos/layout.tsx, que además lo redirige si entra por URL.
   const options = profile?.role === "gerente"
     ? [{ href: "/documentos", title: "Documentos por firmar", text: "Revisar, observar o firmar documentos asignados", icon: FileSignature }]
+    : profile?.role === "admin"
+    ? uniformOptions
     : [...uniformOptions, { href: "/documentos", title: "Gestión de documentos", text: "Crear, revisar y firmar documentos internos", icon: FileSignature }];
   return <div className="mx-auto max-w-5xl">
     <header className="page-header"><p className="page-eyebrow">Gestión operativa</p><h1 className="page-title">Centro de operaciones</h1><p className="page-description">Accede a los módulos disponibles para tu perfil.</p></header>

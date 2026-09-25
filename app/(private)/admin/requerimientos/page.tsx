@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth";
+import { esAdminUniformes } from "@/lib/roles";
 import { AdminRequirements } from "@/components/admin-requirements";
 import { Alert } from "@/components/ui/alert";
 import { getAdminOptions, getAdminResults } from "@/lib/admin/data";
@@ -30,7 +31,7 @@ async function loadPage(searchParams: Promise<Record<string, string | string[] |
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const profile = await getCurrentProfile();
-  if (profile?.role !== "admin") redirect("/inicio");
+  if (!esAdminUniformes(profile?.role)) redirect("/inicio");
   const props = await loadPage(searchParams);
   if (!props) return <section><header className="page-header"><h1 className="page-title">Administración</h1></header><Alert kind="error">No se pudo cargar Administración. Revisa los filtros y comprueba que la migración administrativa esté aplicada.</Alert><a className="btn btn-secondary mt-3" href="/admin/requerimientos">Reintentar sin filtros</a></section>;
   return <><AdminSectionNav/><AdminRequirements {...props} allowDeletion={allowTestRequirementDeletion()}/></>;

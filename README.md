@@ -42,17 +42,31 @@ Toda cuenta nueva (sin importar cómo se creó: Add user, Google, o un registro 
 recibe automáticamente el rol `sin_vincular` -- sin acceso a ninguna página privada. Esto es
 deliberado: el módulo de Capacitaciones permite que los agentes se registren solos con Google, así
 que ninguna cuenta nueva puede quedar con un rol con privilegios por default. Después de crear
-cualquier cuenta de staff (admin, coordinador, gerente o capacitador) hay que asignarle su rol a
-mano, siempre.
+cualquier cuenta de staff (superadmin, admin, coordinador, gerente o capacitador) hay que asignarle
+su rol a mano, siempre.
+
+### Roles disponibles
+
+- **superadmin**: acceso total a todos los módulos (Inicio, Mis requerimientos, Documentos incluidas
+  Vacaciones/Papeletas, Capacitaciones Gestión y Agentes, Administración) más la gestión de usuarios
+  y roles.
+- **admin**: restringido a Inicio (solo la parte de uniformes), Mis requerimientos y Administración
+  completa (Requerimientos, Mantenimiento, Importaciones). No ve ni puede usar Documentos (ni
+  Vacaciones/Papeletas) ni Capacitaciones -- estas rutas lo redirigen y sus RLS/RPC lo rechazan
+  aunque entre por URL directa o llame a la API a mano.
+- **coordinador**, **gerente**, **capacitador**, **agente**: sin cambios, mantienen exactamente el
+  acceso que ya tenían antes de separar superadmin de admin.
+
+### Primer superadmin (por SQL, una sola vez)
 
 1. En Supabase abre **Authentication > Users > Add user > Create new user**.
 2. Escribe correo y contraseña.
-3. Crea primero el usuario que será administrador.
-4. Abre **SQL Editor** y ejecuta lo siguiente cambiando el correo y el rol (`admin`, `coordinador`, `gerente` o `capacitador`):
+3. Crea primero el usuario que será superadmin.
+4. Abre **SQL Editor** y ejecuta lo siguiente cambiando el correo:
 
 ```sql
 update public.profiles
-set role = 'admin', nombre = 'Administrador'
+set role = 'superadmin', nombre = 'Administrador'
 where email = 'administrador@empresa.com';
 ```
 
@@ -60,6 +74,16 @@ Sin este paso, la cuenta queda en `sin_vincular` y no puede entrar a nada -- ni 
 normal por correo+contraseña la deja pasar (ver `lib/auth.ts` / `lib/capacitaciones/auth.ts`).
 Para cambiar solo el nombre visible de alguien ya asignado puedes ejecutar el mismo `update` sin
 tocar `role`.
+
+### Resto de usuarios (admin, coordinador, gerente, capacitador) -- sin SQL
+
+Con un superadmin ya creado, todos los demás roles de staff se asignan desde la propia app: crea
+la cuenta en **Authentication > Users > Add user**, inicia sesión como superadmin, entra a
+**Administración > Usuarios y roles** (`/admin/usuarios`, visible solo para superadmin) y elige el
+rol de la lista desplegable junto al correo del usuario. La pantalla llama a la función
+`superadmin_cambiar_rol`, que valida el rol en el servidor y evita que un superadmin se quite su
+propio rol por accidente. Los agentes no se crean aquí: se vinculan solos con Google + DNI desde
+Capacitaciones (ver `docs/` para el detalle de ese flujo) y solo un superadmin puede desvincularlos.
 
 ## 6. Ejecutar localmente
 

@@ -11,7 +11,7 @@ export const revalidate = 0;
 export default async function ReporteCapacitacionPage({ params }: { params: Promise<{ id: string }> }) {
   const profile = await getCurrentCapacitacionProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "admin" && profile.role !== "capacitador") redirect("/capacitaciones");
+  if (profile.role !== "superadmin" && profile.role !== "capacitador") redirect("/capacitaciones");
   const { id } = await params;
   const db = await createClient();
 

@@ -477,17 +477,18 @@ test("el listado nunca oculta un error de consulta como si fuera una lista vací
 });
 
 // --- Diseño de estados y permisos (lógica pura) ---
-test("REGISTRADO: admin y gerente pueden observar; coordinador no, y nadie revisa su propia papeleta", () => {
+test("REGISTRADO: superadmin y gerente pueden observar; admin ya no (perdió Vacaciones), coordinador tampoco, y nadie revisa su propia papeleta", () => {
   const owner = "coord-1", other = "coord-2";
-  assert.equal(canObserve("admin", owner, other, "REGISTRADO"), true);
+  assert.equal(canObserve("superadmin", owner, other, "REGISTRADO"), true);
   assert.equal(canObserve("gerente", owner, other, "REGISTRADO"), true);
+  assert.equal(canObserve("admin", owner, other, "REGISTRADO"), false); // admin quedó restringido a uniformes
   assert.equal(canObserve("coordinador", owner, other, "REGISTRADO"), false);
-  assert.equal(canObserve("admin", owner, owner, "REGISTRADO"), false); // nunca su propia papeleta
+  assert.equal(canObserve("superadmin", owner, owner, "REGISTRADO"), false); // nunca su propia papeleta
 });
-test("solo el gerente puede firmar (admin NO firma por defecto), y solo desde REGISTRADO", () => {
+test("solo el gerente puede firmar (superadmin NO firma por defecto), y solo desde REGISTRADO", () => {
   const owner = "coord-1", other = "coord-2";
   assert.equal(canSign("gerente", owner, other, "REGISTRADO"), true);
-  assert.equal(canSign("admin", owner, other, "REGISTRADO"), false); // decisión explícita: admin no firma
+  assert.equal(canSign("superadmin", owner, other, "REGISTRADO"), false); // decisión explícita: superadmin no firma
   assert.equal(canSign("gerente", owner, other, "OBSERVADO"), false);
   assert.equal(canSign("gerente", owner, other, "FIRMADO"), false);
   assert.equal(canSign("gerente", owner, owner, "REGISTRADO"), false); // nunca su propia papeleta
@@ -800,7 +801,7 @@ test("lib/vacations/config.ts: ALLOW_TEST_PAPELETA_DELETION sigue el mismo patr�
   }
 });
 
-function fakeProfile(role: "admin" | "coordinador" | "gerente", id = "user-1") {
+function fakeProfile(role: "admin" | "superadmin" | "coordinador" | "gerente", id = "user-1") {
   return { id, email: `${role}@example.com`, nombre: role, role };
 }
 test("makeSignPapeletaHandler: solo gerente puede intentar firmar (403 para admin/coordinador)", async () => {
@@ -815,21 +816,21 @@ test("makeSignPapeletaHandler: rechaza version_esperada inválida antes de tocar
   const response = await handler(new Request("https://x.test/firmar", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ version_esperada: 0 }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   assert.equal(response.status, 400);
 });
-test("makeMarkTestPapeletaHandler: solo admin puede marcar es_prueba (403 para coordinador/gerente)", async () => {
+test("makeMarkTestPapeletaHandler: solo superadmin puede marcar es_prueba (403 para coordinador/gerente)", async () => {
   for (const role of ["coordinador", "gerente"] as const) {
     const handler = makeMarkTestPapeletaHandler({ getProfile: async () => fakeProfile(role), getDb: async () => ({} as SupabaseClient) });
     const response = await handler(new Request("https://x.test/prueba", { method: "PATCH", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ es_prueba: true }) }), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     assert.equal(response.status, 403);
   }
 });
-test("makeDeleteTestPapeletasHandler: solo admin, y el flag de entorno deshabilitado bloquea antes de llamar a la RPC", async () => {
+test("makeDeleteTestPapeletasHandler: solo superadmin, y el flag de entorno deshabilitado bloquea antes de llamar a la RPC", async () => {
   const handlerNonAdmin = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => ({} as SupabaseClient) }, () => true);
   const responseNonAdmin = await handlerNonAdmin(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
   assert.equal(responseNonAdmin.status, 403);
 
   let rpcCalled = false;
   const fakeDb = { rpc: async () => { rpcCalled = true; return { data: [], error: null }; } } as unknown as SupabaseClient;
-  const handlerDisabled = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => false);
+  const handlerDisabled = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb }, () => false);
   const responseDisabled = await handlerDisabled(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
   assert.equal(responseDisabled.status, 403);
   assert.equal(rpcCalled, false, "con el flag apagado nunca debe llegar a llamar la RPC");
@@ -837,7 +838,7 @@ test("makeDeleteTestPapeletasHandler: solo admin, y el flag de entorno deshabili
 test("makeDeleteTestPapeletasHandler: rechaza listas vacías, duplicadas o más de 100 ids antes de llamar a la RPC", async () => {
   let rpcCalled = false;
   const fakeDb = { rpc: async () => { rpcCalled = true; return { data: [], error: null }; } } as unknown as SupabaseClient;
-  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb }, () => true);
   const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const send = (ids: unknown) => handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids }) }));
   assert.equal((await send([])).status, 400);
@@ -856,7 +857,7 @@ test("makeDeleteTestPapeletasHandler: en éxito, borra en Storage exactamente la
     },
     storage: { from: () => ({ remove: async (paths: string[]) => { removed.push(...paths); return { data: paths.map(name => ({ name })), error: null }; } }) },
   } as unknown as SupabaseClient;
-  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb }, () => true);
   const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
   const data = await response.json();
   assert.equal(response.status, 200);
@@ -885,7 +886,7 @@ test("fallo de Storage total: la BD ya se borró, Storage falla completo -- se r
     },
     storage: { from: () => ({ remove: async () => ({ data: null, error: { message: "network error" } }) }) },
   } as unknown as SupabaseClient;
-  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb }, () => true);
   const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
   const data = await response.json();
   assert.equal(response.status, 200); // el borrado en BD sí fue exitoso: no es un error HTTP
@@ -909,7 +910,7 @@ test("fallo de Storage parcial: de 2 archivos, Storage solo confirma 1 -- el otr
     // error individual: aquí se simula justo ese comportamiento (solo v1.pdf viene en la respuesta).
     storage: { from: () => ({ remove: async () => ({ data: [{ name: "coord/a/v1.pdf" }], error: null }) }) },
   } as unknown as SupabaseClient;
-  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb }, () => true);
   const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
   const data = await response.json();
   assert.equal(data.archivos_borrados, 1);
@@ -926,12 +927,12 @@ test("fallo de BD: si la RPC de borrado falla, jamás se llama a Storage (nada q
     },
     storage: { from: () => ({ remove: async () => { storageCalled = true; return { data: [], error: null }; } }) },
   } as unknown as SupabaseClient;
-  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb }, () => true);
+  const handler = makeDeleteTestPapeletasHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb }, () => true);
   const response = await handler(new Request("https://x.test/prueba", { method: "POST", headers: { "Content-Type": "application/json", origin: "https://x.test" }, body: JSON.stringify({ ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }) }));
   assert.equal(response.status, 409);
   assert.equal(storageCalled, false);
 });
-test("makeRetryStorageCleanupHandler: solo admin, lista lo pendiente y reintenta Storage igual que el borrado inicial", async () => {
+test("makeRetryStorageCleanupHandler: solo superadmin, lista lo pendiente y reintenta Storage igual que el borrado inicial", async () => {
   const removedPaths: string[] = [];
   const confirmedCalls: unknown[] = [];
   const fakeDb = {
@@ -945,7 +946,7 @@ test("makeRetryStorageCleanupHandler: solo admin, lista lo pendiente y reintenta
   const nonAdmin = makeRetryStorageCleanupHandler({ getProfile: async () => fakeProfile("gerente"), getDb: async () => fakeDb });
   assert.equal((await nonAdmin(new Request("https://x.test/reintentar", { method: "POST", headers: { origin: "https://x.test" } }))).status, 403);
 
-  const handler = makeRetryStorageCleanupHandler({ getProfile: async () => fakeProfile("admin"), getDb: async () => fakeDb });
+  const handler = makeRetryStorageCleanupHandler({ getProfile: async () => fakeProfile("superadmin"), getDb: async () => fakeDb });
   const response = await handler(new Request("https://x.test/reintentar", { method: "POST", headers: { origin: "https://x.test" } }));
   const data = await response.json();
   assert.equal(response.status, 200);
@@ -955,10 +956,10 @@ test("makeRetryStorageCleanupHandler: solo admin, lista lo pendiente y reintenta
   assert.deepEqual(confirmedCalls, [{ p_paths: ["coord/a/v2.pdf"] }]);
 });
 
-test("navegación: Vacaciones encabeza el módulo Documentos y Mantenimiento solo aparece para admin", async () => {
+test("navegación: Vacaciones encabeza el módulo Documentos y Mantenimiento solo aparece para superadmin", async () => {
   const source = await readFile("components/document-section-nav.tsx", "utf8");
   assert.match(source, /const documentTypes=\[\{href:"\/documentos\/vacaciones"/);
-  assert.match(source, /role==="admin"\?\[\{href:"\/documentos\/vacaciones\/mantenimiento"/);
+  assert.match(source, /role==="superadmin"\?\[\{href:"\/documentos\/vacaciones\/mantenimiento"/);
 });
 test("el detalle de una papeleta ahora incluye el visor de PDF (no exige descargar el archivo para revisarlo)", async () => {
   const source = await readFile("app/(private)/documentos/vacaciones/[id]/page.tsx", "utf8");

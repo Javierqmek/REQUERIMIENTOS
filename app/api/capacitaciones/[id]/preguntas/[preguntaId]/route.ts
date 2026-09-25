@@ -8,7 +8,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     assertSameOrigin(request);
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || (profile.role !== "admin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
+    if (!profile || (profile.role !== "superadmin" && profile.role !== "capacitador")) return json({ error: "No autorizado." }, 403);
     const { preguntaId } = await params;
     const db = await createClient();
     const { error } = await db.from("examen_preguntas").delete().eq("id", preguntaId);

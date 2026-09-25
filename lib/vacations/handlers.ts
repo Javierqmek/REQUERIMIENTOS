@@ -117,7 +117,7 @@ export function makeReviewPapeletaHandler(deps: Dependencies) {
     try {
       assertSameOrigin(request);
       const profile = await deps.getProfile();
-      if (!profile || (profile.role !== "admin" && profile.role !== "gerente")) {
+      if (!profile || (profile.role !== "superadmin" && profile.role !== "gerente")) {
         return json({ error: "Solo administradores o gerentes pueden revisar papeletas." }, 403);
       }
       if (!isValidRequestId(papeletaId)) return json({ error: "Solicitud inválida." }, 400);
@@ -345,7 +345,7 @@ export function makeMarkTestPapeletaHandler(deps: Dependencies) {
     try {
       assertSameOrigin(request);
       const profile = await deps.getProfile();
-      if (!profile || profile.role !== "admin") return json({ error: "Solo administradores." }, 403);
+      if (!profile || profile.role !== "superadmin") return json({ error: "Solo superadmin." }, 403);
       if (!isValidRequestId(papeletaId)) return json({ error: "Solicitud inválida." }, 400);
       const body = await request.json().catch(() => null) as { es_prueba?: boolean } | null;
       if (typeof body?.es_prueba !== "boolean") return json({ error: "Solicitud inválida." }, 400);
@@ -388,7 +388,7 @@ export function makeDeleteTestPapeletasHandler(deps: Dependencies, enabled = all
     try {
       assertSameOrigin(request);
       const profile = await deps.getProfile();
-      if (!profile || profile.role !== "admin") return json({ error: "Solo administradores." }, 403);
+      if (!profile || profile.role !== "superadmin") return json({ error: "Solo superadmin." }, 403);
       if (!enabled()) return json({ error: "La eliminación de papeletas de prueba está deshabilitada." }, 403);
       const body = await request.json().catch(() => null) as { ids?: string[] } | null;
       const ids = Array.isArray(body?.ids) ? body.ids : [];
@@ -418,7 +418,7 @@ export function makeRetryStorageCleanupHandler(deps: Dependencies) {
     try {
       assertSameOrigin(request);
       const profile = await deps.getProfile();
-      if (!profile || profile.role !== "admin") return json({ error: "Solo administradores." }, 403);
+      if (!profile || profile.role !== "superadmin") return json({ error: "Solo superadmin." }, 403);
       const db = await deps.getDb();
       const { data, error } = await db.rpc("admin_listar_borrados_pendientes");
       if (error) return json({ error: error.message }, statusForPapeletaError(error.code));

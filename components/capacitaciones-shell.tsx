@@ -14,11 +14,11 @@ export function CapacitacionesShell({ profile, children }: { profile: Profile; c
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const gestor = profile.role === "admin" || profile.role === "capacitador";
+  const gestor = profile.role === "superadmin" || profile.role === "capacitador";
   const links = gestor
     ? [
         { href: "/capacitaciones/gestion", label: "Gestión" },
-        ...(profile.role === "admin" ? [{ href: "/capacitaciones/gestion/agentes", label: "Agentes" }] : []),
+        ...(profile.role === "superadmin" ? [{ href: "/capacitaciones/gestion/agentes", label: "Agentes" }] : []),
       ]
     : [{ href: "/capacitaciones", label: "Mis capacitaciones" }];
   async function logout() {

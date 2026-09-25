@@ -138,7 +138,7 @@ export default async function VacationRequestDetailPage({ params }: { params: Pr
           <div className="section-card"><h2 className="section-title">Corregir papeleta observada</h2><p className="mt-1 text-sm text-[#607089]">Se creará una versión nueva; la anterior se conserva en el historial.</p></div>
           <VacationCorrectionForm papeleta={row} />
         </div>}
-        {profile.role === "admin" && <VacationTestToggle papeletaId={row.id} esPrueba={row.es_prueba} firmado={row.estado === "FIRMADO"} />}
+        {profile.role === "superadmin" && <VacationTestToggle papeletaId={row.id} esPrueba={row.es_prueba} firmado={row.estado === "FIRMADO"} />}
       </aside>
     </div>
   </section>;

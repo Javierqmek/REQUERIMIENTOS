@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname,useRouter } from "next/navigation";
-import { ChevronDown,ClipboardList,FileSignature,GraduationCap,Home,LogOut,PenLine,ShieldCheck,Shirt,UserRound } from "lucide-react";
+import { ChevronDown,ClipboardList,FileSignature,GraduationCap,Home,LogOut,PenLine,ShieldCheck,Shirt,UserCog,UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
+import { esAdminUniformes } from "@/lib/roles";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useEffect,useRef,useState } from "react";
 
@@ -13,22 +14,25 @@ export function AppShell({profile,children}:{profile:Profile;children:React.Reac
   const [loggingOut,setLoggingOut]=useState(false);const [logoutError,setLogoutError]=useState("");
   const links=[
     {href:"/inicio",label:"Inicio",icon:Home},
-    ...(["admin","coordinador"].includes(profile.role)?[{href:"/requerimientos",label:"Mis requerimientos",icon:ClipboardList}]:[]),
-    {href:"/documentos",label:"Documentos",icon:FileSignature},
-    ...(profile.role==="admin"?[{href:"/capacitaciones/gestion",label:"Capacitaciones",icon:GraduationCap}]:[]),
-    ...(profile.role==="admin"?[{href:"/admin/requerimientos",label:"Administración",icon:ShieldCheck}]:[]),
+    ...(profile.role==="coordinador"||esAdminUniformes(profile.role)?[{href:"/requerimientos",label:"Mis requerimientos",icon:ClipboardList}]:[]),
+    // admin queda restringido a Requerimientos/Administración -- Documentos (y Vacaciones/
+    // Papeletas dentro) es solo para superadmin, coordinador y gerente.
+    ...(profile.role!=="admin"?[{href:"/documentos",label:"Documentos",icon:FileSignature}]:[]),
+    ...(profile.role==="superadmin"?[{href:"/capacitaciones/gestion",label:"Capacitaciones",icon:GraduationCap}]:[]),
+    ...(esAdminUniformes(profile.role)?[{href:"/admin/requerimientos",label:"Administración",icon:ShieldCheck}]:[]),
+    ...(profile.role==="superadmin"?[{href:"/admin/usuarios",label:"Usuarios y roles",icon:UserCog}]:[]),
   ];
   useEffect(()=>{function close(event:MouseEvent){if(menuRef.current&&!menuRef.current.contains(event.target as Node))setMenuOpen(false)}document.addEventListener("mousedown",close);return()=>document.removeEventListener("mousedown",close)},[]);
   async function logout(){if(loggingOut)return;setLoggingOut(true);setLogoutError("");try{const {error}=await createClient().auth.signOut();if(error)throw error;router.replace("/login");router.refresh()}catch{setLogoutError("No pudimos cerrar la sesión. Reintenta antes de abandonar este equipo.");setLoggingOut(false)}}
-  function active(href:string){return pathname===href||pathname.startsWith(`${href}/`)||(href==="/admin/requerimientos"&&pathname.startsWith("/admin/"))}
+  function active(href:string){return pathname===href||pathname.startsWith(`${href}/`)||(href==="/admin/requerimientos"&&pathname.startsWith("/admin/")&&pathname!=="/admin/usuarios")}
   return <div className="min-h-screen pb-20 lg:pb-0">
     <header className="sticky top-0 z-30 border-b border-[#DCE3EC] bg-white/95 backdrop-blur"><div className="mx-auto flex h-16 max-w-7xl items-center gap-7 px-4 sm:px-6">
       <Link href="/inicio" className="flex shrink-0 items-center gap-2.5 text-[#0B1F3A]"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#0B1F3A] text-white"><Shirt size={19}/></span><span className="text-[16px] font-semibold tracking-tight">Uniformes</span></Link>
       <nav className="hidden h-full items-center gap-1 lg:flex" aria-label="Navegación principal">{links.map(({href,label})=><Link key={href} href={href} className={`flex h-full items-center border-b-2 px-3 text-sm font-medium ${active(href)?"border-[#2563EB] text-[#174EA6]":"border-transparent text-[#607089] hover:text-[#172033]"}`}>{label}</Link>)}</nav>
       <div className="relative ml-auto" ref={menuRef}><button aria-expanded={menuOpen} aria-haspopup="menu" onClick={()=>setMenuOpen(v=>!v)} className="flex h-10 max-w-[210px] items-center gap-2 rounded-lg border border-transparent px-2 text-left hover:border-[#DCE3EC] hover:bg-[#F5F8FD]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#174EA6]"><UserRound size={17}/></span><span className="hidden min-w-0 sm:block"><span className="block truncate text-sm font-medium text-[#172033]">{profile.nombre}</span></span><ChevronDown size={16} className="shrink-0 text-[#607089]"/></button>
         {menuOpen&&<div role="menu" className="absolute right-0 top-12 w-64 rounded-xl border border-[#DCE3EC] bg-white p-2 shadow-[0_12px_32px_rgba(11,31,58,.12)]"><div className="border-b border-[#DCE3EC] px-3 py-2.5"><p className="truncate text-xs text-[#607089]">{profile.email}</p><p className="mt-1 text-xs capitalize text-[#607089]">{profile.role}</p></div>
-          {profile.role==="admin"&&<Link role="menuitem" href="/admin/perfiles-firma" onClick={()=>setMenuOpen(false)} className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[#45556D] hover:bg-[#F5F8FD]"><PenLine size={17}/>Perfiles de firma</Link>}
-          {profile.role!=="admin"&&<Link role="menuitem" href="/perfil/firma" onClick={()=>setMenuOpen(false)} className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[#45556D] hover:bg-[#F5F8FD]"><PenLine size={17}/>Firma y sello</Link>}
+          {profile.role==="superadmin"&&<Link role="menuitem" href="/admin/perfiles-firma" onClick={()=>setMenuOpen(false)} className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[#45556D] hover:bg-[#F5F8FD]"><PenLine size={17}/>Perfiles de firma</Link>}
+          {profile.role!=="superadmin"&&profile.role!=="admin"&&<Link role="menuitem" href="/perfil/firma" onClick={()=>setMenuOpen(false)} className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[#45556D] hover:bg-[#F5F8FD]"><PenLine size={17}/>Firma y sello</Link>}
           <button role="menuitem" className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-[#C53030] hover:bg-red-50" onClick={()=>{setMenuOpen(false);setConfirming(true)}}><LogOut size={17}/>Cerrar sesión</button>
         </div>}
       </div>

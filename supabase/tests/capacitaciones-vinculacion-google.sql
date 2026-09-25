@@ -1,7 +1,7 @@
 -- Valida el registro de agentes por Google + DNI: vincular_agente_google() usa auth.uid() (nunca
 -- un id recibido del cliente) y lee el correo directo de auth.users (nunca uno recibido del
--- cliente), y desvincular_agente() es admin-only y revierte el rol. Corre con "set local role
--- authenticated" (nunca superusuario) para las operaciones que hace la API.
+-- cliente), y desvincular_agente() es superadmin-only y revierte el rol. Corre con "set local
+-- role authenticated" (nunca superusuario) para las operaciones que hace la API.
 \set ON_ERROR_STOP on
 begin;
 create function pg_temp.ok(value boolean,label text) returns void language plpgsql as $$
@@ -23,7 +23,7 @@ insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values
  ('ff000000-0000-4000-8000-000000000003','agente-google-2@example.test','{}','{"provider":"google"}'),
  ('ff000000-0000-4000-8000-000000000004','coordinador-email@example.test','{}','{"provider":"email"}'),
  ('ff000000-0000-4000-8000-000000000005','agente-google-3@example.test','{}','{"provider":"google"}');
-update public.profiles set role='admin' where id='ff000000-0000-4000-8000-000000000001';
+update public.profiles set role='superadmin' where id='ff000000-0000-4000-8000-000000000001';
 select pg_temp.ok((select role from public.profiles where id='ff000000-0000-4000-8000-000000000002')='sin_vincular',
   'una cuenta creada por Google OAuth recibe el rol "sin_vincular" (handle_new_user), no coordinador ni agente');
 select pg_temp.ok((select role from public.profiles where id='ff000000-0000-4000-8000-000000000004')='sin_vincular',
@@ -58,11 +58,11 @@ select pg_temp.denied($$select public.vincular_agente_google('55555555')$$,'P000
 select pg_temp.denied($$select public.desvincular_agente('fe000000-0000-4000-8000-000000000001')$$,'42501');
 reset role;
 
--- Solo admin desvincula.
+-- Solo superadmin desvincula.
 set local role authenticated;
 select set_config('request.jwt.claim.sub','ff000000-0000-4000-8000-000000000001',true);
 select pg_temp.ok((select (public.desvincular_agente('fe000000-0000-4000-8000-000000000001')).profile_id is null),
-  'admin puede desvincular: personal.profile_id queda en null');
+  'superadmin puede desvincular: personal.profile_id queda en null');
 select pg_temp.ok((select role from public.profiles where id='ff000000-0000-4000-8000-000000000002')='sin_vincular',
   'al desvincular, el rol del perfil vuelve a sin_vincular (pierde el acceso de agente)');
 reset role;

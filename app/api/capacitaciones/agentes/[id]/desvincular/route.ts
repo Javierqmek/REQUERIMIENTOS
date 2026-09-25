@@ -10,7 +10,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     assertSameOrigin(request);
     const profile = await getCurrentCapacitacionProfile();
-    if (!profile || profile.role !== "admin") return json({ error: "No autorizado." }, 403);
+    if (!profile || profile.role !== "superadmin") return json({ error: "No autorizado." }, 403);
     const { id } = await params;
     const db = await createClient();
     const { error } = await db.rpc("desvincular_agente", { p_personal_id: id });

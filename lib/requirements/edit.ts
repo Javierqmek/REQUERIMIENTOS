@@ -1,3 +1,4 @@
+import { esAdminUniformes } from "@/lib/roles";
 import { z } from "zod";
 import type { Prenda, Profile, Requerimiento } from "@/lib/types";
 import type { GarmentGender } from "@/lib/garments/gender";
@@ -12,7 +13,7 @@ export type EditPayload = { version: string; requerimiento: EditableRequirement 
 export type EditLine = { prenda_id: string; detalle_id?: string; nombre: string; cantidad: number; precio: number; codigo: string; genero: GarmentGender };
 export function canEditRequirement(profile: Profile | null, row: Pick<Requerimiento, "estado" | "usuario_creador_id">) {
   return (row.estado === "Pendiente" || row.estado === "Observado") &&
-    (profile?.role === "admin" || (profile?.role === "coordinador" && profile.id === row.usuario_creador_id));
+    (esAdminUniformes(profile?.role) || (profile?.role === "coordinador" && profile.id === row.usuario_creador_id));
 }
 export const editGarmentsSchema = z.object({
   version: z.string().regex(/^[a-f0-9]{32}$/),

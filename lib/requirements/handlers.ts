@@ -1,3 +1,4 @@
+import { esAdminUniformes } from "@/lib/roles";
 import { z } from "zod";
 import { HttpInputError, readJsonBody } from "@/lib/security/http";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -10,7 +11,7 @@ export function makeEditGarmentsHandler(deps: Dependencies) {
   return async (request: Request, id: string) => {
     try {
       const profile = await deps.getProfile();
-      if (!profile || !["admin", "coordinador"].includes(profile.role)) return json({ error: "No autorizado" }, 403);
+      if (!profile || !(esAdminUniformes(profile.role)||profile.role==="coordinador")) return json({ error: "No autorizado" }, 403);
       z.string().uuid().parse(id);
       const input = editGarmentsSchema.parse(await readJsonBody(request));
       const db = await deps.getDb();
@@ -18,7 +19,7 @@ export function makeEditGarmentsHandler(deps: Dependencies) {
       if (loaded.error?.code === "42501") return json({ error: "No autorizado" }, 403);
       if (loaded.error || !loaded.data) return json({ error: "No pudimos cargar el requerimiento." }, 500);
       const row = (loaded.data as EditPayload).requerimiento;
-      if (profile.role !== "admin" && row.usuario_creador_id !== profile.id) return json({ error: "No autorizado" }, 403);
+      if (!esAdminUniformes(profile.role) && row.usuario_creador_id !== profile.id) return json({ error: "No autorizado" }, 403);
       if (!canEditRequirement(profile, row)) return json({ error: ATTENDED_MESSAGE }, 409);
       const result = await db.rpc("editar_prendas_requerimiento", { p_id: id, p_version: input.version, p_detalles: input.detalles });
       if (result.error) {
