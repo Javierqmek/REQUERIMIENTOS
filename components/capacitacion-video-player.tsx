@@ -150,7 +150,10 @@ function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonc
       }, 500);
     }
     function crearReproductor() {
-      if (destroyed || !containerRef.current || !window.YT) return;
+      // Guarda extra contra crear el player dos veces (p.ej. si onYouTubeIframeAPIReady llegara a
+      // dispararse más de una vez): un segundo iframe en el mismo contenedor es exactamente el
+      // tipo de estado inconsistente que puede romper el handshake de postMessage con la API.
+      if (destroyed || !containerRef.current || !window.YT || playerRef.current) return;
       playerRef.current = new window.YT.Player(containerRef.current, {
         host: "https://www.youtube-nocookie.com",
         videoId,
@@ -191,7 +194,12 @@ function YoutubePlayer({ videoId, nonce, onPorcentaje }: { videoId: string; nonc
   }, [videoId, intento]);
 
   return <div className="relative aspect-video w-full">
-    <div ref={containerRef} className={`h-full w-full ${estado === "listo" ? "" : "invisible"}`} />
+    {/* NUNCA se oculta con visibility/display: el widget de YouTube necesita medir su propio
+        layout para el handshake de postMessage con la API -- ocultarlo mientras carga rompía ese
+        handshake (origin mismatch en la consola) y el video quedaba en negro para siempre, ni
+        siquiera activaba el aviso de "no se pudo cargar". El overlay de abajo lo tapa visualmente
+        con un fondo negro sólido mientras no está listo, sin tocar su layout. */}
+    <div ref={containerRef} className="h-full w-full" />
     {estado !== "listo" && <div className="absolute inset-0 grid place-items-center bg-black p-4 text-center">
       {estado === "cargando"
         ? <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />

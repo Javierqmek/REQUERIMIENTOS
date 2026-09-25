@@ -24,7 +24,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "test:prod": "playwright test --config=playwright.production.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "latest",
