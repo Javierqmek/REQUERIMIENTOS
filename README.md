@@ -38,10 +38,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-clave-publica
 
 ## 5. Crear usuarios y el primer administrador
 
+Toda cuenta nueva (sin importar cómo se creó: Add user, Google, o un registro público por correo)
+recibe automáticamente el rol `sin_vincular` -- sin acceso a ninguna página privada. Esto es
+deliberado: el módulo de Capacitaciones permite que los agentes se registren solos con Google, así
+que ninguna cuenta nueva puede quedar con un rol con privilegios por default. Después de crear
+cualquier cuenta de staff (admin, coordinador, gerente o capacitador) hay que asignarle su rol a
+mano, siempre.
+
 1. En Supabase abre **Authentication > Users > Add user > Create new user**.
-2. Escribe correo y contraseña. Al crear el usuario, la migración genera automáticamente su perfil como coordinador.
+2. Escribe correo y contraseña.
 3. Crea primero el usuario que será administrador.
-4. Abre **SQL Editor** y ejecuta lo siguiente cambiando el correo:
+4. Abre **SQL Editor** y ejecuta lo siguiente cambiando el correo y el rol (`admin`, `coordinador`, `gerente` o `capacitador`):
 
 ```sql
 update public.profiles
@@ -49,7 +56,10 @@ set role = 'admin', nombre = 'Administrador'
 where email = 'administrador@empresa.com';
 ```
 
-Los demás usuarios quedan como `coordinador`. Para cambiar el nombre visible de un coordinador puedes ejecutar el mismo `update`, sin modificar `role`.
+Sin este paso, la cuenta queda en `sin_vincular` y no puede entrar a nada -- ni siquiera al login
+normal por correo+contraseña la deja pasar (ver `lib/auth.ts` / `lib/capacitaciones/auth.ts`).
+Para cambiar solo el nombre visible de alguien ya asignado puedes ejecutar el mismo `update` sin
+tocar `role`.
 
 ## 6. Ejecutar localmente
 

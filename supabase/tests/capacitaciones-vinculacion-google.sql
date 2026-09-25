@@ -26,8 +26,8 @@ insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values
 update public.profiles set role='admin' where id='ff000000-0000-4000-8000-000000000001';
 select pg_temp.ok((select role from public.profiles where id='ff000000-0000-4000-8000-000000000002')='sin_vincular',
   'una cuenta creada por Google OAuth recibe el rol "sin_vincular" (handle_new_user), no coordinador ni agente');
-select pg_temp.ok((select role from public.profiles where id='ff000000-0000-4000-8000-000000000004')='coordinador',
-  'una cuenta creada por otra vía (Admin API, correo+contraseña) conserva el default de siempre (coordinador), no "sin_vincular"');
+select pg_temp.ok((select role from public.profiles where id='ff000000-0000-4000-8000-000000000004')='sin_vincular',
+  'una cuenta creada por correo+contraseña TAMBIÉN recibe "sin_vincular" (universal, no solo Google) -- ver capacitaciones-registro-solo-google.sql');
 
 insert into public.personal(id,codigo_personal,nombre,dni,cargo,cliente,unidad,activo) values
  ('fe000000-0000-4000-8000-000000000001','VG-1','Agente Google Uno','55555555','Agente','','','t'),

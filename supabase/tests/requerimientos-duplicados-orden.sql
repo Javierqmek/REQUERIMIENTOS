@@ -6,6 +6,9 @@ begin if value is distinct from true then raise exception 'FAIL: %',label; end i
 insert into auth.users(id,email,raw_user_meta_data) values
  ('19000000-0000-4000-8000-000000000001','dup-owner@example.test','{}'),
  ('19000000-0000-4000-8000-000000000002','dup-admin@example.test','{}');
+-- Toda cuenta nueva recibe 'sin_vincular' por default (ver 202609240008): coordinador/admin ya
+-- no se pueden dejar en el default de la columna, hay que asignarlos explícitamente.
+update public.profiles set role='coordinador' where id='19000000-0000-4000-8000-000000000001';
 update public.profiles set role='admin' where id='19000000-0000-4000-8000-000000000002';
 insert into public.clientes(id,nombre) values('59000000-0000-4000-8000-000000000001','DUP CLIENTE');
 insert into public.unidades(id,cliente_id,nombre) values('69000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','DUP UNIDAD');

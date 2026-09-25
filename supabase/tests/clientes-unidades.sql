@@ -22,6 +22,9 @@ insert into auth.users(id,email,raw_user_meta_data) values
 ('11000000-0000-4000-8000-000000000001','qa-coordinador@example.test','{}'),
 ('11000000-0000-4000-8000-000000000002','qa-other@example.test','{}'),
 ('11000000-0000-4000-8000-000000000003','qa-admin@example.test','{}');
+-- Toda cuenta nueva recibe 'sin_vincular' por default (ver 202609240008): coordinador/admin ya
+-- no se pueden dejar en el default de la columna, hay que asignarlos explícitamente.
+update profiles set role='coordinador' where id in ('11000000-0000-4000-8000-000000000001','11000000-0000-4000-8000-000000000002');
 update profiles set role='admin' where id='11000000-0000-4000-8000-000000000003';
 insert into personal(id,codigo_personal,nombre,dni,cargo) values
 ('22000000-0000-4000-8000-000000000001','QA-AGENT','Agente independiente','00112233','AVP');
