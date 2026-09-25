@@ -13,6 +13,7 @@ export default function LoginPage() {
         </div>
         <LoginForm />
         <p className="mt-5 text-center text-sm text-[#607089]">¿Eres agente y no tienes cuenta de Capacitaciones? <Link href="/registro" className="font-medium text-[#174EA6] hover:underline">Regístrate aquí</Link></p>
+        <p className="mt-4 text-center text-xs text-[#8794A8]"><Link href="/privacidad" className="hover:underline">Política de privacidad</Link></p>
       </section>
     </main>
   );

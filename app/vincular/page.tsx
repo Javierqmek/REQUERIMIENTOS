@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Shirt } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { VincularCuentaForm } from "@/components/vincular-cuenta-form";
@@ -23,6 +24,7 @@ export default async function VincularPage() {
           <p className="mt-1.5 text-sm text-[#607089]">Conectado como <strong>{user.email}</strong>. Ingresa tu DNI para asociarlo con tu registro de personal.</p>
         </div>
         <VincularCuentaForm />
+        <p className="mt-4 text-center text-xs text-[#8794A8]"><Link href="/privacidad" className="hover:underline">Política de privacidad</Link></p>
       </section>
     </main>
   );

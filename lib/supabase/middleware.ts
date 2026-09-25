@@ -17,6 +17,12 @@ export async function updateSession(request: NextRequest, makeClient: typeof cre
     result.headers.set("Pragma", "no-cache");
     result.headers.set("Expires", "0");
     result.headers.set("Content-Security-Policy", csp);
+    // Expuesto como cabecera de RESPUESTA (no en el HTML) para que la prueba de Playwright
+    // (tests/production/youtube-player.spec.ts) pueda leer el nonce sin depender de un <meta> en
+    // el body: una cabecera no es legible por una inyección de HTML/CSS pura (a diferencia de un
+    // <meta> con el valor en texto plano), solo por script que ya se ejecuta en el mismo origen
+    // -- caso en el que la CSP ya perdió de todos modos.
+    result.headers.set("X-Nonce", nonce);
     return result;
   }
   try { assertSameOrigin(request); }
@@ -40,10 +46,11 @@ export async function updateSession(request: NextRequest, makeClient: typeof cre
     const pathname = request.nextUrl.pathname;
     // /login y /registro deben ser accesibles sin sesión (ahí vive el botón de Google). El callback
     // de OAuth (/auth/callback) también: llega con el código de Google y todavía SIN sesión --
-    // recién la crea al intercambiar el código (ver app/auth/callback/route.ts). Ninguno expone
-    // datos privados. /vincular (donde se pide el DNI) SÍ exige sesión a propósito: solo se llega
-    // ahí después de autenticarse con Google.
-    const isPublicPath = pathname === "/login" || pathname === "/registro" || pathname === "/auth/callback";
+    // recién la crea al intercambiar el código (ver app/auth/callback/route.ts). /privacidad es
+    // pública a propósito (Google exige poder revisarla sin iniciar sesión). Ninguna expone datos
+    // privados. /vincular (donde se pide el DNI) SÍ exige sesión: solo se llega ahí después de
+    // autenticarse con Google.
+    const isPublicPath = pathname === "/login" || pathname === "/registro" || pathname === "/auth/callback" || pathname === "/privacidad";
     if ((error || !user) && !isPublicPath) {
       if (pathname.startsWith("/api/")) return finish(NextResponse.json({ error: "Sesión requerida" }, { status: 401 }));
       return finish(NextResponse.redirect(new URL("/login", request.url)));

@@ -30,8 +30,12 @@ test("el reproductor de YouTube carga sin errores de CSP ni de postMessage", asy
   expect(headers["cross-origin-embedder-policy"], "COEP no debe exigir require-corp").not.toBe("require-corp");
   expect(headers["cross-origin-opener-policy"]).toBeFalsy();
 
-  const nonce = await page.locator('meta[name="csp-nonce"]').getAttribute("content");
-  expect(nonce, "el layout debe exponer el nonce de esta petición").toBeTruthy();
+  // El nonce se lee de la cabecera de RESPUESTA (X-Nonce), nunca del HTML: un <meta> con el
+  // valor en texto plano anularía la protección de "nonce hiding" del navegador ante cualquier
+  // inyección de HTML/CSS que no llegue a ejecutar script (ver el test de más abajo, que confirma
+  // que el HTML no contiene esa etiqueta).
+  const nonce = headers["x-nonce"];
+  expect(nonce, "la respuesta debe traer X-Nonce").toBeTruthy();
 
   // Reproduce exactamente lo que hace components/capacitacion-video-player.tsx: inyecta el
   // script de la IFrame API con el nonce real (sin él, script-src con 'strict-dynamic' lo
