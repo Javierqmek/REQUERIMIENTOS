@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PRENDA_RENOVACIONES, RENOVACIONES, normalizeRenovacion } from "@/lib/garments/renovacion";
 
 export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas", "provincias"] as const;
 export type CatalogKind = typeof CATALOG_KINDS[number];
@@ -37,7 +38,10 @@ export async function getCatalogRows(db: SupabaseClient, raw: ReturnType<typeof 
 
 const shortText = (max: number, label: string) => z.string().trim().min(1, `${label} es obligatorio.`).max(max);
 const clientValues = z.object({ nombre: shortText(200, "El nombre") }).strict();
-const unitValues = z.object({ cliente_id: z.string().uuid("Selecciona un cliente válido."), nombre: shortText(200, "El nombre") }).strict();
+const unitValues = z.object({
+  cliente_id: z.string().uuid("Selecciona un cliente válido."), nombre: shortText(200, "El nombre"),
+  renovacion_defecto: z.enum(RENOVACIONES, { error: "La renovación por defecto debe ser Verano o Invierno." }),
+}).strict();
 const personValues = z.object({
   codigo_personal: shortText(80, "El código"), nombre: shortText(200, "El nombre"),
   dni: z.string().trim().regex(/^\d{8,12}$/, "El DNI debe tener entre 8 y 12 dígitos."),
@@ -50,6 +54,7 @@ const garmentValues = z.object({
   cantidad: z.number().int().min(1).max(10000),
   cliente_id: z.string().uuid("Selecciona un cliente válido."),
   genero: z.enum(["HOMBRE", "MUJER", "AMBOS"]),
+  renovacion: z.enum(PRENDA_RENOVACIONES, { error: "La renovación debe ser Verano, Invierno o Ambos." }),
 }).strict();
 const provinceValues = z.object({ nombre: shortText(200, "El nombre") }).strict();
 const createSchemas = [
@@ -76,12 +81,14 @@ export const IMPORT_KINDS = ["personal", "prendas"] as const;
 export type ImportKind = typeof IMPORT_KINDS[number];
 export const IMPORT_HEADERS: Record<ImportKind, readonly string[]> = {
   personal: ["codigo_personal", "nombre", "dni", "cargo", "activo"],
-  prendas: ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "cliente", "genero", "activo"],
+  prendas: ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "cliente", "genero", "renovacion", "activo"],
 };
 export type RawImport = { kind: ImportKind; headers: string[]; rows: Record<string, string>[] };
 export type ImportIssue = { row: number; code: string; message: string; action: "error" | "omitido" };
 export type ImportPreview = { rows: Record<string, unknown>[]; issues: ImportIssue[]; nuevos: number; actualizados: number; omitidos: number; errores: number };
 
+// Encabezados sin tildes ni mayúsculas: "Renovación" y "renovacion" son la misma columna.
+const headerKey = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 function booleanValue(value: string) {
   const normalized = value.trim().toLowerCase();
   if (["true", "1", "si", "sí"].includes(normalized)) return true;
@@ -107,15 +114,16 @@ async function findValues(db: SupabaseClient, table: string, column: string, val
 }
 export async function prepareImport(db: SupabaseClient, input: unknown) {
   const parsed = payloadSchema.parse(input); const expected=[...IMPORT_HEADERS[parsed.kind]];
-  if (parsed.headers.length!==expected.length || parsed.headers.some((h,i)=>h.trim().toLowerCase()!==expected[i])) {
+  if (parsed.headers.length!==expected.length || parsed.headers.some((h,i)=>headerKey(h)!==expected[i])) {
     throw new z.ZodError([{ code:"custom", path:["headers"], message:`Encabezados requeridos: ${expected.join(", ")}` }]);
   }
   const key = parsed.kind === "personal" ? "codigo_personal" : "codigo_prenda";
-  const codes=parsed.rows.map(row=>row[key]?.trim()).filter(Boolean);
+  const records=parsed.rows.map(row=>Object.fromEntries(Object.entries(row).map(([name,value])=>[headerKey(name),value])));
+  const codes=records.map(row=>row[key]?.trim()).filter(Boolean);
   const existing=await findValues(db,parsed.kind,key,[...new Set(codes)]);
-  const clients=parsed.kind === "prendas" ? await findValues(db,"clientes","nombre",[...new Set(parsed.rows.map(r=>r.cliente?.trim()).filter(Boolean))]) : new Set<string>();
+  const clients=parsed.kind === "prendas" ? await findValues(db,"clientes","nombre",[...new Set(records.map(r=>r.cliente?.trim()).filter(Boolean))]) : new Set<string>();
   const seen=new Set<string>(); const rows:Record<string,unknown>[]=[]; const issues:ImportIssue[]=[]; let nuevos=0,actualizados=0;
-  parsed.rows.forEach((raw,index)=>{
+  records.forEach((raw,index)=>{
     const rowNumber=index+2; const code=clean(raw[key]??"",80)??"";
     if (!code) { issues.push({row:rowNumber,code:"—",message:`${key} es obligatorio o demasiado largo.`,action:"error"}); return; }
     if (seen.has(code)) { issues.push({row:rowNumber,code,message:"Código repetido dentro del archivo; se conserva la primera fila.",action:"omitido"}); return; }
@@ -126,12 +134,14 @@ export async function prepareImport(db: SupabaseClient, input: unknown) {
       if (!nombre || !cargo || !/^\d{8,12}$/.test(dni)) { issues.push({row:rowNumber,code,message:"Revisa nombre, cargo y DNI (8 a 12 dígitos).",action:"error"}); return; }
       rows.push({codigo_personal:code,nombre,dni,cargo,activo:active});
     } else {
+      const renovacion=normalizeRenovacion(raw.renovacion);
+      if (!renovacion) { issues.push({row:rowNumber,code,message:`Renovación inválida "${(raw.renovacion??"").trim()}". Usa Verano, Invierno o Ambos.`,action:"error"}); return; }
       const nombre=clean(raw.nombre_prenda??"",240),almacen=clean(raw.codigo_almacen??"",80),cliente=clean(raw.cliente??"",200);
       const precio=Number(raw.precio),cantidad=Number(raw.cantidad),genero=(raw.genero??"").trim().toUpperCase();
       if (!nombre || !almacen || !cliente || !clients.has(cliente) || !Number.isFinite(precio) || precio<0 || !/^\d+(\.\d{1,2})?$/.test(raw.precio??"") || !Number.isInteger(cantidad) || cantidad<1 || cantidad>10000 || !["HOMBRE","MUJER","AMBOS"].includes(genero)) {
         issues.push({row:rowNumber,code,message:"Revisa nombre, almacén, precio, cantidad, género y cliente existente.",action:"error"}); return;
       }
-      rows.push({codigo_prenda:code,nombre_prenda:nombre,codigo_almacen:almacen,precio,cantidad,cliente,genero,activo:active});
+      rows.push({codigo_prenda:code,nombre_prenda:nombre,codigo_almacen:almacen,precio,cantidad,cliente,genero,renovacion,activo:active});
     }
     if (existing.has(code)) actualizados++; else nuevos++;
   });

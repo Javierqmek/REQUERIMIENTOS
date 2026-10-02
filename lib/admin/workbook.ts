@@ -48,8 +48,8 @@ export async function buildSidigeWorkbook(requirements: AsyncIterable<SidigeRequ
   if (!count) throw new EmptyExportError();
   return Buffer.concat(chunks);
 }
-export function sidigeFilename(date = new Date()) {
+export function sidigeFilename(date = new Date(), renovacion = "") {
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
   const part = (key: string) => parts.find(p => p.type === key)?.value;
-  return `MIGRADOR_RENOVACION_VERANO_${part("year")}${part("month")}${part("day")}_${part("hour")}${part("minute")}.xlsx`;
+  return `MIGRADOR_RENOVACION_${renovacion || "TODAS"}_${part("year")}${part("month")}${part("day")}_${part("hour")}${part("minute")}.xlsx`;
 }

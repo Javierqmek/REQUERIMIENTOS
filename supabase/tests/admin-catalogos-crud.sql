@@ -37,20 +37,20 @@ select public.admin_actualizar_catalogo_activo('clientes',(select id from public
 select public.admin_actualizar_catalogo_activo('clientes',(select id from public.clientes where nombre='Cliente Editado'),true);
 select pg_temp.ok((select activo from public.clientes where nombre='Cliente Editado'),'desactiva y reactiva cliente');
 
-select public.admin_guardar_catalogo('unidades',null,jsonb_build_object('cliente_id',(select id::text from public.clientes where nombre='Cliente Editado'),'nombre','Sede Nueva'));
+select public.admin_guardar_catalogo('unidades',null,jsonb_build_object('cliente_id',(select id::text from public.clientes where nombre='Cliente Editado'),'nombre','Sede Nueva','renovacion_defecto','VERANO'));
 select pg_temp.ok(exists(select 1 from public.unidades where nombre='Sede Nueva'),'crea unidad');
-select pg_temp.denied(format($q$select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"%s","nombre":"sede nueva"}')$q$,(select id from public.clientes where nombre='Cliente Editado')));
-select public.admin_guardar_catalogo('unidades',(select id from public.unidades where nombre='Sede Nueva'),jsonb_build_object('cliente_id',(select id::text from public.clientes where nombre='Cliente Editado'),'nombre','Sede Editada'));
+select pg_temp.denied(format($q$select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"%s","nombre":"sede nueva","renovacion_defecto":"VERANO"}')$q$,(select id from public.clientes where nombre='Cliente Editado')));
+select public.admin_guardar_catalogo('unidades',(select id from public.unidades where nombre='Sede Nueva'),jsonb_build_object('cliente_id',(select id::text from public.clientes where nombre='Cliente Editado'),'nombre','Sede Editada','renovacion_defecto','VERANO'));
 select pg_temp.ok(exists(select 1 from public.unidades where nombre='Sede Editada'),'edita unidad');
 select public.admin_actualizar_catalogo_activo('unidades',(select id from public.unidades where nombre='Sede Editada'),false);
 select public.admin_actualizar_catalogo_activo('unidades',(select id from public.unidades where nombre='Sede Editada'),true);
 select public.admin_eliminar_catalogo('unidades',(select id from public.unidades where nombre='Sede Editada'));
 select pg_temp.ok(not exists(select 1 from public.unidades where nombre='Sede Editada'),'elimina unidad nunca usada');
 select pg_temp.denied($q$select public.admin_eliminar_catalogo('unidades','68000000-0000-4000-8000-000000000001')$q$);
-select pg_temp.denied($q$select public.admin_guardar_catalogo('unidades','68000000-0000-4000-8000-000000000001','{"cliente_id":"58000000-0000-4000-8000-000000000002","nombre":"Unidad histórica"}')$q$);
+select pg_temp.denied($q$select public.admin_guardar_catalogo('unidades','68000000-0000-4000-8000-000000000001','{"cliente_id":"58000000-0000-4000-8000-000000000002","nombre":"Unidad histórica","renovacion_defecto":"VERANO"}')$q$);
 select pg_temp.denied($q$select public.admin_eliminar_catalogo('clientes','58000000-0000-4000-8000-000000000001')$q$);
 
-select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"58000000-0000-4000-8000-000000000002","nombre":"Unidad histórica"}');
+select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"58000000-0000-4000-8000-000000000002","nombre":"Unidad histórica","renovacion_defecto":"VERANO"}');
 select pg_temp.ok((select count(*)=2 from public.unidades where nombre='Unidad histórica'),'permite mismo nombre de unidad en clientes distintos');
 select public.admin_actualizar_catalogo_activo('unidades',(select id from public.unidades where cliente_id='58000000-0000-4000-8000-000000000002' and nombre='Unidad histórica'),false);
 select public.admin_actualizar_catalogo_activo('clientes','58000000-0000-4000-8000-000000000002',false);
@@ -63,7 +63,7 @@ select public.admin_guardar_catalogo('clientes',null,'{"nombre":"Cliente Tempora
 select public.admin_eliminar_catalogo('clientes',(select id from public.clientes where nombre='Cliente Temporal'));
 select pg_temp.ok(not exists(select 1 from public.clientes where nombre='Cliente Temporal'),'elimina cliente sin relaciones');
 select public.admin_actualizar_catalogo_activo('clientes','58000000-0000-4000-8000-000000000002',false);
-select pg_temp.denied($q$select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"58000000-0000-4000-8000-000000000002","nombre":"No permitida"}')$q$);
+select pg_temp.denied($q$select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"58000000-0000-4000-8000-000000000002","nombre":"No permitida","renovacion_defecto":"VERANO"}')$q$);
 select public.admin_actualizar_catalogo_activo('clientes','58000000-0000-4000-8000-000000000002',true);
 
 select public.admin_guardar_catalogo('personal',null,'{"codigo_personal":"CRUD-P1","nombre":"Persona Nueva","dni":"87654321","cargo":"Agente"}');
@@ -72,12 +72,12 @@ select public.admin_actualizar_catalogo_activo('personal',(select id from public
 select public.admin_actualizar_catalogo_activo('personal',(select id from public.personal where codigo_personal='CRUD-P1'),true);
 select pg_temp.ok(exists(select 1 from public.personal where codigo_personal='CRUD-P1' and nombre='Persona Editada' and activo),'crea edita y cambia estado de personal');
 
-select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Nueva","codigo_almacen":"ALM-2","precio":35.50,"cantidad":3,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"HOMBRE"}');
-select public.admin_guardar_catalogo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Editada","codigo_almacen":"ALM-3","precio":40,"cantidad":4,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"AMBOS"}');
+select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Nueva","codigo_almacen":"ALM-2","precio":35.50,"cantidad":3,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"HOMBRE","renovacion":"AMBOS"}');
+select public.admin_guardar_catalogo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Editada","codigo_almacen":"ALM-3","precio":40,"cantidad":4,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"AMBOS","renovacion":"AMBOS"}');
 select public.admin_actualizar_catalogo_activo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),false);
 select public.admin_actualizar_catalogo_activo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),true);
 select pg_temp.ok(exists(select 1 from public.prendas where codigo_prenda='CRUD-G1' and nombre_prenda='Prenda Editada' and activo),'crea edita y cambia estado de prendas');
-select public.admin_guardar_catalogo('prendas','38000000-0000-4000-8000-000000000001','{"codigo_prenda":"CRUD-G0","nombre_prenda":"Maestro editado","codigo_almacen":"NUEVO","precio":99,"cantidad":5,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"AMBOS"}');
+select public.admin_guardar_catalogo('prendas','38000000-0000-4000-8000-000000000001','{"codigo_prenda":"CRUD-G0","nombre_prenda":"Maestro editado","codigo_almacen":"NUEVO","precio":99,"cantidad":5,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"AMBOS","renovacion":"AMBOS"}');
 select public.admin_guardar_catalogo('clientes','58000000-0000-4000-8000-000000000001','{"nombre":"Cliente histórico editado"}');
 reset role;
 select pg_temp.ok((select cantidad=2 and precio_unitario=20 and codigo_almacen='HIST-1' from public.detalle_requerimiento where id='78000000-0000-4000-8000-000000000001') and exists(select 1 from public.requerimientos where id='48000000-0000-4000-8000-000000000001'),'edicion de maestro no altera historico');

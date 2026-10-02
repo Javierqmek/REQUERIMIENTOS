@@ -1,10 +1,12 @@
 import { LEGACY_CLIENT, LEGACY_UNIT } from "@/lib/requerimientos";
+import { renovacionLabel } from "@/lib/garments/renovacion";
 import type { Requerimiento } from "@/lib/types";
 
 export function RequirementFacts({ row }: { row: Requerimiento }) {
   const facts = [
     ["Agente", row.personal?.nombre], ["DNI", row.personal?.dni], ["Cargo", row.personal?.cargo],
     ["Cliente", row.clientes?.nombre ?? LEGACY_CLIENT], ["Unidad", row.unidades?.nombre ?? LEGACY_UNIT],
+    ["Renovación", row.renovacion ? renovacionLabel(row.renovacion) : undefined],
     ["Fecha", new Intl.DateTimeFormat("es-PE", { dateStyle: "long", timeStyle: "short", timeZone: "America/Lima" }).format(new Date(row.fecha))],
     ["Referencia", row.referencia_interna],
   ];

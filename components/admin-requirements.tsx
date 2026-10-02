@@ -99,7 +99,7 @@ export function AdminRequirements({ initial, options, initialFilters = EMPTY_FIL
       if (response.redirected || contentType.includes("text/html")) throw new Error(sessionMessage);
       if (!contentType.includes(kind === "sidige" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv")) throw new Error("No recibimos un archivo válido. Intenta nuevamente.");
       const blob = await response.blob();
-      const filename = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? (kind === "sidige" ? "MIGRADOR_RENOVACION_VERANO.xlsx" : "requerimientos.csv");
+      const filename = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? (kind === "sidige" ? "MIGRADOR_RENOVACION.xlsx" : "requerimientos.csv");
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a"); link.href = url; link.download = filename;
       document.body.append(link); link.click(); link.remove();

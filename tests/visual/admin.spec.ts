@@ -58,9 +58,20 @@ test("Excel: progreso, bloqueo doble clic, descarga y éxito", async ({ page }) 
   await page.getByRole("button", { name: "Exportar Excel SIDIGE" }).click();
   await expect(page.getByRole("button", { name: "Generando Excel..." })).toBeDisabled();
   const file = await download;
-  expect(file.suggestedFilename()).toMatch(/^MIGRADOR_RENOVACION_VERANO_\d{8}_\d{4}\.xlsx$/);
+  expect(file.suggestedFilename()).toMatch(/^MIGRADOR_RENOVACION_TODAS_\d{8}_\d{4}\.xlsx$/);
   await expect(page.getByText("Excel generado correctamente", { exact: true })).toBeVisible();
   await expect(page.getByText("Archivo listo:", { exact: false })).toBeVisible();
+});
+test("filtro por renovación y exportación nombrada con la renovación elegida", async ({ page }) => {
+  await page.goto("/admin/requerimientos");
+  await page.getByRole("button", { name: "Filtros · Todos los requerimientos" }).click();
+  await page.getByLabel("Renovación", { exact: true }).selectOption("INVIERNO");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByRole("heading", { name: "12 requerimientos encontrados" })).toBeVisible();
+  await expect(page.locator("table td").getByText("Invierno", { exact: true }).first()).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar Excel SIDIGE" }).click();
+  expect((await download).suggestedFilename()).toMatch(/^MIGRADOR_RENOVACION_INVIERNO_\d{8}_\d{4}\.xlsx$/);
 });
 test("vacío, error de consulta y error de validación", async ({ page }) => {
   await page.goto("/admin/requerimientos");

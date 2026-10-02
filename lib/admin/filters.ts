@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RENOVACIONES } from "@/lib/garments/renovacion";
 
 export const ADMIN_STATES = ["Pendiente", "Atendido", "Observado"] as const;
 export const ADMIN_SORT_FIELDS = ["fecha", "agente", "cliente", "unidad", "coordinador", "estado", "prendas", "total"] as const;
@@ -15,6 +16,7 @@ export const adminFiltersSchema = z.object({
   estado: z.union([z.literal(""), z.enum(ADMIN_STATES)]).default(""),
   desde: date, hasta: date, q: z.string().trim().max(120).default(""),
   genero: z.union([z.literal(""),z.literal("HOMBRE"),z.literal("MUJER"),z.literal("AMBOS")]).default(""),
+  renovacion: z.union([z.literal(""), z.enum(RENOVACIONES)]).default(""),
   unidadesMin: count, unidadesMax: count,
   duplicados: z.union([z.literal(""), z.literal("1")]).default(""),
   orden: z.union([z.literal(""), z.enum(ADMIN_SORT_FIELDS)]).default(""),
@@ -22,7 +24,7 @@ export const adminFiltersSchema = z.object({
 }).refine(f => !f.desde || !f.hasta || f.desde <= f.hasta, { message: "La fecha desde no puede ser posterior a la fecha hasta", path: ["hasta"] })
   .refine(f => !f.unidadesMin || !f.unidadesMax || Number(f.unidadesMin) <= Number(f.unidadesMax), { message: "El mínimo de unidades no puede superar el máximo", path: ["unidadesMax"] });
 export type AdminFilters = z.infer<typeof adminFiltersSchema>;
-export const EMPTY_FILTERS: AdminFilters = { cliente: "", unidad: "", coordinador: "", estado: "", desde: "", hasta: "", q: "", genero:"", unidadesMin:"", unidadesMax:"", duplicados: "", orden: "", direccion: "" };
+export const EMPTY_FILTERS: AdminFilters = { cliente: "", unidad: "", coordinador: "", estado: "", desde: "", hasta: "", q: "", genero:"", renovacion:"", unidadesMin:"", unidadesMax:"", duplicados: "", orden: "", direccion: "" };
 export function parseAdminQuery(params: URLSearchParams) {
   return {
     filters: adminFiltersSchema.parse(Object.fromEntries(params)),
@@ -44,6 +46,7 @@ export function filterRpcArgs(filters: AdminFilters) {
     p_desde: filters.desde ? filters.desde + "T00:00:00-05:00" : null,
     p_hasta: until, p_busqueda: filters.q || null,
     p_genero: filters.genero || null,
+    p_renovacion: filters.renovacion || null,
     p_unidades_min: filters.unidadesMin ? Number(filters.unidadesMin) : null,
     p_unidades_max: filters.unidadesMax ? Number(filters.unidadesMax) : null,
     p_solo_duplicados: filters.duplicados === "1",

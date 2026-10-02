@@ -6,7 +6,7 @@ export const IDS = {
 export function fixtureRequirement(overrides: Partial<SidigeRequirement> = {}): SidigeRequirement {
   return {
     id: "44000000-0000-4000-8000-000000000001",
-    fecha: "2026-09-02T15:00:00Z", referencia_interna: "OTRA REFERENCIA HISTORICA", estado: "Pendiente",
+    fecha: "2026-09-02T15:00:00Z", referencia_interna: "OTRA REFERENCIA HISTORICA", estado: "Pendiente", renovacion: "VERANO",
     cliente_id: IDS.cliente, unidad_id: IDS.unidad, usuario_creador_id: IDS.coordinador,
     clientes: { nombre: " RENIEC " }, unidades: { nombre: "OFICINA REGISTRAL ATE" },
     personal: { cargo: "  AGENTE ", nombre: "RAMÍREZ   RIVERA JERY", dni: " 071389725 " },

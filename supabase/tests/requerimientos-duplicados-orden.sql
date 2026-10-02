@@ -18,10 +18,10 @@ insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,
  ('39000000-0000-4000-8000-000000000002','DUP-B','DUP PRENDA B','B',20,'DUP CLIENTE',1,true,'AMBOS');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','19000000-0000-4000-8000-000000000001',true);
-select set_config('qa.first',public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','[{"prenda_id":"39000000-0000-4000-8000-000000000001"}]','99000000-0000-4000-8000-000000000001')::text,true);
-select pg_temp.ok(public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','[{"prenda_id":"39000000-0000-4000-8000-000000000001"}]','99000000-0000-4000-8000-000000000001')=current_setting('qa.first')::uuid,'same request id is idempotent');
+select set_config('qa.first',public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"39000000-0000-4000-8000-000000000001"}]','99000000-0000-4000-8000-000000000001')::text,true);
+select pg_temp.ok(public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"39000000-0000-4000-8000-000000000001"}]','99000000-0000-4000-8000-000000000001')=current_setting('qa.first')::uuid,'same request id is idempotent');
 select pg_temp.ok((select count(*)=1 from public.requerimientos),'retry creates one header');
-select public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','[{"prenda_id":"39000000-0000-4000-8000-000000000001"},{"prenda_id":"39000000-0000-4000-8000-000000000002"}]','99000000-0000-4000-8000-000000000002');
+select public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"39000000-0000-4000-8000-000000000001"},{"prenda_id":"39000000-0000-4000-8000-000000000002"}]','99000000-0000-4000-8000-000000000002');
 select set_config('request.jwt.claim.sub','19000000-0000-4000-8000-000000000002',true);
 select pg_temp.ok((public.admin_consultar_requerimientos_v2(p_solo_duplicados=>true)#>>'{total}')::int=2,'detects duplicate pair');
 select pg_temp.ok((public.admin_consultar_requerimientos_v2(p_solo_duplicados=>true)#>>'{duplicate_groups}')::int=1,'groups duplicate pair');

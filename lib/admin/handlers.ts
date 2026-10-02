@@ -61,7 +61,7 @@ export function makeSidigeHandler(deps: Dependencies) {
       const bytes = await buildSidigeWorkbook(exportRequirements(await deps.getDb(), filters, request.signal), request.signal);
       return new Response(new Uint8Array(bytes), { headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${sidigeFilename()}"`,
+        "Content-Disposition": `attachment; filename="${sidigeFilename(new Date(), filters.renovacion)}"`,
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
       } });
     } catch (error) { return errorResponse(error); }

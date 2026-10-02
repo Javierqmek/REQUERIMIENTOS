@@ -39,6 +39,7 @@ export function AdminCatalogDialog({catalog,row,clients,busy,error,onCancel,onSu
           {catalog==="unidades"&&<>
             <label><span className="label">Cliente</span><select className="input" name="cliente_id" defaultValue={currentClientId} disabled={editing&&row?.puede_cambiar_cliente===false} required><option value="">Selecciona un cliente</option>{selectableClients.map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select>{editing&&row?.puede_cambiar_cliente===false&&<span className="mt-1.5 block text-xs text-[var(--text-secondary)]">No puede cambiar porque la unidad ya fue utilizada.</span>}{editing&&row?.puede_cambiar_cliente===false&&<input type="hidden" name="cliente_id" value={currentClientId}/>}</label>
             <Field label="Nombre de unidad / sede" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/>
+            <label className="sm:col-span-2"><span className="label">Renovación por defecto</span><select className="input" name="renovacion_defecto" defaultValue={text(row,"renovacion_defecto")||"VERANO"} required><option value="VERANO">Verano</option><option value="INVIERNO">Invierno</option></select><span className="mt-1.5 block text-xs text-[var(--text-secondary)]">Se preselecciona al elegir esta unidad en un requerimiento; el usuario puede cambiarla.</span></label>
           </>}
           {catalog==="personal"&&<>
             <Field label="Código de personal" name="codigo_personal" maxLength={80} defaultValue={text(row,"codigo_personal")} readOnly={editing}/>
@@ -52,6 +53,7 @@ export function AdminCatalogDialog({catalog,row,clients,busy,error,onCancel,onSu
             <div className="sm:col-span-2"><Field label="Nombre de la prenda" name="nombre_prenda" maxLength={240} defaultValue={text(row,"nombre_prenda")}/></div>
             <label><span className="label">Cliente</span><select className="input" name="cliente_id" defaultValue={currentClientId} required><option value="">Selecciona un cliente</option>{selectableClients.map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
             <label><span className="label">Género</span><select className="input" name="genero" defaultValue={text(row,"genero")||"AMBOS"} required><option value="HOMBRE">Hombre</option><option value="MUJER">Mujer</option><option value="AMBOS">Ambos</option></select></label>
+            <label><span className="label">Renovación</span><select className="input" name="renovacion" defaultValue={text(row,"renovacion")||"AMBOS"} required><option value="VERANO">Verano</option><option value="INVIERNO">Invierno</option><option value="AMBOS">Ambos</option></select></label>
             <Field label="Precio unitario" name="precio" type="number" min={0} max={9999999999.99} step={0.01} defaultValue={text(row,"precio")} />
             <Field label="Cantidad fija" name="cantidad" type="number" min={1} max={10000} step={1} defaultValue={text(row,"cantidad")||"1"} />
           </>}

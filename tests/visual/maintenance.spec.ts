@@ -48,3 +48,23 @@ test("formularios de unidad, personal y prenda son compactos y completos",async(
   await page.getByRole("tab",{name:"Prendas"}).click();await page.getByRole("button",{name:"Nuevo"}).click();await expect(page.getByLabel("Precio unitario")).toBeVisible();await expect(page.getByLabel("Cantidad fija")).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test("Unidades y Prendas muestran y guardan la renovación",async({page})=>{
+  await page.goto("/admin/mantenimiento");
+  await page.getByRole("tab",{name:"Unidades"}).click();
+  await expect(page.getByText("Renovación por defecto").first()).toBeVisible();
+  await page.getByRole("button",{name:"Nuevo"}).click();
+  await expect(page.getByLabel("Renovación por defecto")).toHaveValue("VERANO");
+  await expect(page.getByLabel("Renovación por defecto").locator("option")).toHaveText(["Verano","Invierno"]);
+  await page.locator(`select[name="cliente_id"]`).selectOption({label:"RENIEC"});
+  await page.getByLabel("Nombre de unidad / sede").fill("Sede de invierno");
+  await page.getByLabel("Renovación por defecto").selectOption("INVIERNO");
+  const request=page.waitForRequest(r=>r.url().endsWith("/api/admin/catalogos")&&r.method()==="POST");
+  await page.getByRole("button",{name:"Crear registro"}).click();
+  expect((await request).postDataJSON().valores).toMatchObject({nombre:"Sede de invierno",renovacion_defecto:"INVIERNO"});
+  await page.getByRole("tab",{name:"Prendas"}).click();
+  await expect(page.getByText("Renovación",{exact:true}).first()).toBeVisible();
+  await page.getByRole("button",{name:"Nuevo"}).click();
+  await expect(page.locator(`select[name="renovacion"]`)).toHaveValue("AMBOS");
+  await expect(page.locator(`select[name="renovacion"]`).locator("option")).toHaveText(["Verano","Invierno","Ambos"]);
+});

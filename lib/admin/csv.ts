@@ -9,11 +9,11 @@ export function csvCell(value: unknown): string {
   return '"' + text.replaceAll('"', '""') + '"';
 }
 
-export const CSV_HEADERS = ["Fecha","Coordinador","Agente","DNI","Cliente","Unidad","Estado","Prenda","Cantidad","Código almacén","Precio unitario"];
+export const CSV_HEADERS = ["Fecha","Coordinador","Agente","DNI","Cliente","Unidad","Estado","Renovación","Prenda","Cantidad","Código almacén","Precio unitario"];
 export function toCsvRows(row: SidigeRequirement): unknown[][] {
   return row.detalle_requerimiento.filter(detail => detail.activo !== false).map(detail => [
     row.fecha,row.profiles?.nombre || row.profiles?.email,row.personal?.nombre,row.personal?.dni,
-    row.clientes?.nombre ?? LEGACY_CLIENT,row.unidades?.nombre ?? LEGACY_UNIT,row.estado,
+    row.clientes?.nombre ?? LEGACY_CLIENT,row.unidades?.nombre ?? LEGACY_UNIT,row.estado,row.renovacion,
     detail.prendas?.nombre_prenda,detail.cantidad,detail.codigo_almacen,detail.precio_unitario,
   ]);
 }

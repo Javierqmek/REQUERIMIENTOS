@@ -7,14 +7,17 @@ import { requerimientoSchema } from "@/lib/validations";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { GarmentGenderPicker } from "@/components/garment-gender-picker";
+import { RenovacionPicker } from "@/components/renovacion-picker";
 import { RequirementTotal } from "@/components/requirement-total";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useActiveCatalog } from "@/components/use-active-catalog";
-import { genderLabel, isGenderCompatible, type GenderChoice } from "@/lib/garments/gender";
+import { genderLabel, type GenderChoice } from "@/lib/garments/gender";
+import { garmentChoices, garmentFits as fits, renovacionLabel, type Renovacion } from "@/lib/garments/renovacion";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
 import type { Cliente, Personal, Prenda, Unidad } from "@/lib/types";
 import { createRequestId } from "@/lib/security/request-id";
 
+type Choice = { renovacion?: Renovacion; gender?: GenderChoice };
 export default function NewRequirement() {
   const supabase = useMemo(() => createClient(), []);
   const savingRef = useRef(false);
@@ -26,7 +29,8 @@ export default function NewRequirement() {
   const [clientId, setClientId] = useState("");
   const [unitId, setUnitId] = useState("");
   const [gender, setGender] = useState<GenderChoice | null>(null);
-  const [pendingGender, setPendingGender] = useState<GenderChoice | null>(null);
+  const [renovacion, setRenovacion] = useState<Renovacion | null>(null);
+  const [pendingChange, setPendingChange] = useState<Choice | null>(null);
   const [lines, setLines] = useState<Prenda[]>([]);
   const [selected, setSelected] = useState("");
   const [searching, setSearching] = useState(false);
@@ -37,11 +41,13 @@ export default function NewRequirement() {
   const client = clients.rows.find(c => c.id === clientId);
   const units = useActiveCatalog<Unidad>(supabase, "unidades", step === 2 && Boolean(client), { column: "cliente_id", value: clientId });
   const unit = units.rows.find(u => u.id === unitId);
-  const genderValues = useMemo(() => gender ? [gender, "AMBOS"] : [], [gender]);
-  const garments = useActiveCatalog<Prenda>(supabase, "prendas", step === 2 && Boolean(client && unit && gender), { column: "cliente", value: client?.nombre ?? "" }, { column: "genero", values: genderValues });
-  const visibleGarments = garments.rows.filter(garment => gender && isGenderCompatible(garment.genero, gender));
+  const inFilters = useMemo(() => ({ genero: gender ? [gender, "AMBOS"] : [], renovacion: renovacion ? [renovacion, "AMBOS"] : [] }), [gender, renovacion]);
+  const garments = useActiveCatalog<Prenda>(supabase, "prendas", step === 2 && Boolean(client && unit && gender && renovacion), { column: "cliente", value: client?.nombre ?? "" }, inFilters);
+  const visibleGarments = garments.rows.filter(garment => gender && renovacion && fits(garment, renovacion, gender));
+  const choices = garmentChoices(visibleGarments, lines.map(line => line.id));
   const chosen = garments.rows.find(g => g.id === selected);
-  const ready = Boolean(client && unit && gender) && !garments.loading && !garments.error;
+  const ready = Boolean(client && unit && gender && renovacion) && !garments.loading && !garments.error;
+  const removed = pendingChange ? lines.filter(garment => !fits(garment, pendingChange.renovacion ?? renovacion, pendingChange.gender ?? gender)) : [];
   const total = catalogTotal(lines);
 
   useEffect(() => {
@@ -65,7 +71,7 @@ export default function NewRequirement() {
   }, [query, supabase]);
 
   function clearDestination() {
-    setClientId(""); setUnitId(""); setGender(null); setPendingGender(null); setLines([]); setSelected(""); setError("");
+    setClientId(""); setUnitId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
   }
   function reset() {
     if (savingRef.current) return;
@@ -76,19 +82,24 @@ export default function NewRequirement() {
     clearDestination(); setAgent(a); setStep(2);
   }
   function changeClient(id: string) {
-    setClientId(id); setUnitId(""); setGender(null); setPendingGender(null); setLines([]); setSelected(""); setError("");
+    setClientId(id); setUnitId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
   }
-  function applyGender(next: GenderChoice) {
-    setGender(next);
-    setLines(current => current.filter(garment => isGenderCompatible(garment.genero, next)));
-    setSelected("");
-    setPendingGender(null);
-    setError("");
+  function applyChange(next: Choice) {
+    const nextRenovacion = next.renovacion ?? renovacion, nextGender = next.gender ?? gender;
+    setRenovacion(nextRenovacion); setGender(nextGender);
+    setLines(current => current.filter(garment => fits(garment, nextRenovacion, nextGender)));
+    setSelected(""); setPendingChange(null); setError("");
   }
-  function changeGender(next: GenderChoice) {
-    if (next === gender) return;
-    if (lines.some(garment => !isGenderCompatible(garment.genero, next))) setPendingGender(next);
-    else applyGender(next);
+  function requestChange(next: Choice) {
+    const nextRenovacion = next.renovacion ?? renovacion, nextGender = next.gender ?? gender;
+    if (nextRenovacion === renovacion && nextGender === gender) return;
+    if (lines.some(garment => !fits(garment, nextRenovacion, nextGender))) setPendingChange(next);
+    else applyChange(next);
+  }
+  function changeUnit(id: string) {
+    setUnitId(id); setSelected("");
+    const next = units.rows.find(u => u.id === id);
+    if (next) requestChange({ renovacion: next.renovacion_defecto });
   }
   function add() {
     if (!ready || !chosen || savingRef.current) return;
@@ -98,7 +109,7 @@ export default function NewRequirement() {
   async function save() {
     if (!agent || savingRef.current) return;
     const parsed = requerimientoSchema.safeParse({
-      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId,
+      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, renovacion: renovacion ?? undefined,
       detalles: lines.map(p => ({ prenda_id: p.id })),
     });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
@@ -109,6 +120,7 @@ export default function NewRequirement() {
         p_agente_id: parsed.data.agente_id,
         p_cliente_id: parsed.data.cliente_id,
         p_unidad_id: parsed.data.unidad_id,
+        p_renovacion: parsed.data.renovacion,
         p_detalles: parsed.data.detalles,
         p_request_id: requestId,
       });
@@ -179,7 +191,7 @@ export default function NewRequirement() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-[#45556D]" htmlFor="unidad">Unidad</label>
-            <select id="unidad" className="input" value={unitId} disabled={saving || !client || units.loading || units.error} onChange={e => { setUnitId(e.target.value); setSelected(""); }}>
+            <select id="unidad" className="input" value={unitId} disabled={saving || !client || units.loading || units.error} onChange={e => changeUnit(e.target.value)}>
               <option value="">Selecciona una unidad</option>
               {units.rows.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
             </select>
@@ -188,26 +200,27 @@ export default function NewRequirement() {
             {client && !units.loading && !units.error && !units.rows.length && <p className="mt-2 text-sm text-[#607089]">No hay unidades activas para este cliente.</p>}
           </div>
         </div>
-        {unit && <GarmentGenderPicker value={gender} disabled={saving} onChange={changeGender}/>}
+        {unit && <RenovacionPicker value={renovacion} disabled={saving} onChange={value => requestChange({ renovacion: value })}/>}
+        {unit && <GarmentGenderPicker value={gender} disabled={saving} onChange={value => requestChange({ gender: value })}/>}
       </div>
       <div className="section-card mt-4">
         <h2 className="section-title">Prendas solicitadas</h2>
         <p className="mt-1 text-sm text-[#607089]">La cantidad de cada prenda está definida en el maestro de prendas.</p>
-        {!client ? <p className="mt-3 text-sm text-[#607089]">Selecciona un cliente</p> : !unit ? <p className="mt-3 text-sm text-[#607089]">Selecciona una unidad</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para ver las prendas disponibles.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button className="btn btn-ghost" onClick={garments.retry}>Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente y género.</p>}
+        {!client ? <p className="mt-3 text-sm text-[#607089]">Selecciona un cliente</p> : !unit ? <p className="mt-3 text-sm text-[#607089]">Selecciona una unidad</p> : !renovacion ? <p className="mt-3 text-sm text-[#607089]">Elige el tipo de renovación para ver las prendas disponibles.</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para ver las prendas disponibles.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button className="btn btn-ghost" onClick={garments.retry}>Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente, renovación y género.</p>}
         <div className="mt-4 grid grid-cols-[88px_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_96px_auto]">
           <div className="col-span-2 min-w-0 sm:col-span-1">
             <label className="mb-1 block text-xs font-medium text-[#607089]" htmlFor="prenda">Prenda</label>
             <select id="prenda" className="input" disabled={saving || !ready || !garments.rows.length} value={selected} onChange={e => setSelected(e.target.value)}>
               <option value="">Selecciona una prenda</option>
-              {visibleGarments.map(g => <option key={g.id} value={g.id} disabled={lines.some(p => p.id === g.id)}>{g.nombre_prenda} · Cant. {g.cantidad}</option>)}
+              {choices.map(({ garment: g, added }) => <option key={g.id} value={g.id} disabled={added} className={added ? "text-[#8794A8] line-through" : undefined}>{g.nombre_prenda} · Cant. {g.cantidad}{added ? " · Ya agregada" : ""}</option>)}
             </select>
           </div>
           <div><span id="cantidad-label" className="mb-1 block text-xs font-medium text-[#607089]">Cantidad fija</span><output aria-labelledby="cantidad-label" className="flex min-h-11 items-center rounded-lg border border-[#DCE3EC] bg-[#F8FAFD] px-3 text-sm">{chosen?.cantidad ?? "—"}</output></div>
           <button disabled={saving || !ready || !chosen} onClick={add} className="btn btn-primary"><Plus size={17}/>Agregar</button>
         </div>
-        {chosen && <p className="mt-2 break-words text-xs text-[#607089]">Código {chosen.codigo_almacen} · {genderLabel(chosen.genero)} · Precio unitario S/ {Number(chosen.precio).toFixed(2)}</p>}
+        {chosen && <p className="mt-2 break-words text-xs text-[#607089]">Código {chosen.codigo_almacen} · {genderLabel(chosen.genero)} · {renovacionLabel(chosen.renovacion)} · Precio unitario S/ {Number(chosen.precio).toFixed(2)}</p>}
         <div className="mt-4 divide-y divide-[#E8EDF4] border-y border-[#E8EDF4]">
-          {!lines.length ? <p className="py-4 text-center text-sm text-[#607089]">Todavía no agregaste prendas.</p> : lines.map(p => <div key={p.id} className="flex items-center gap-3 py-3"><div className="min-w-0 flex-1"><strong className="break-words text-sm font-medium text-[#172033]">{p.nombre_prenda}</strong><p className="mt-0.5 break-words text-xs text-[#607089]">{p.codigo_almacen} · {genderLabel(p.genero)} · Cantidad {p.cantidad}</p><p className="mt-0.5 text-xs text-[#607089]">Precio unitario {formatMoney(p.precio)} · Subtotal <span className="font-medium text-[#45556D]">{formatMoney(Number(p.precio) * p.cantidad)}</span></p></div><button disabled={saving} aria-label={`Eliminar ${p.nombre_prenda}`} onClick={() => setLines(x => x.filter(i => i.id !== p.id))} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#C53030] hover:bg-red-50"><Trash2 size={17}/></button></div>)}
+          {!lines.length ? <p className="py-4 text-center text-sm text-[#607089]">Todavía no agregaste prendas.</p> : lines.map(p => <div key={p.id} className="flex items-center gap-3 py-3"><div className="min-w-0 flex-1"><strong className="break-words text-sm font-medium text-[#172033]">{p.nombre_prenda}</strong><p className="mt-0.5 break-words text-xs text-[#607089]">{p.codigo_almacen} · {genderLabel(p.genero)} · {renovacionLabel(p.renovacion)} · Cantidad {p.cantidad}</p><p className="mt-0.5 text-xs text-[#607089]">Precio unitario {formatMoney(p.precio)} · Subtotal <span className="font-medium text-[#45556D]">{formatMoney(Number(p.precio) * p.cantidad)}</span></p></div><button disabled={saving} aria-label={`Eliminar ${p.nombre_prenda}`} onClick={() => setLines(x => x.filter(i => i.id !== p.id))} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#C53030] hover:bg-red-50"><Trash2 size={17}/></button></div>)}
         </div>
         <RequirementTotal count={lines.length} total={total}/>
       </div>
@@ -216,11 +229,11 @@ export default function NewRequirement() {
         <button disabled={saving} onClick={reset} className="btn btn-secondary">Cancelar</button>
         <button onClick={save} disabled={saving || !ready || !lines.length} className="btn btn-primary w-full sm:w-auto">{saving ? <LoaderCircle className="animate-spin" size={17}/> : <CheckCircle2 size={17}/>} {saving ? "Guardando requerimiento..." : "Guardar requerimiento"}</button>
       </footer>
-      <ConfirmDialog open={Boolean(pendingGender)} busy={false} intent="warning"
-        title="¿Cambiar el género de las prendas?"
-        description="Al cambiar el género se quitarán las prendas que ya no correspondan. Las prendas unisex se mantendrán."
-        confirmLabel="Sí, continuar" onCancel={() => setPendingGender(null)}
-        onConfirm={() => pendingGender && applyGender(pendingGender)}/>
+      <ConfirmDialog open={Boolean(pendingChange)} busy={false} intent="warning"
+        title={pendingChange?.renovacion ? "¿Cambiar el tipo de renovación?" : "¿Cambiar el género de las prendas?"}
+        description={`Se quitarán las prendas que ya no correspondan: ${removed.map(garment => garment.nombre_prenda).join(", ")}. Las prendas que sirven para ambas opciones se mantendrán.`}
+        confirmLabel="Sí, continuar" onCancel={() => setPendingChange(null)}
+        onConfirm={() => pendingChange && applyChange(pendingChange)}/>
     </section>
   );
 }

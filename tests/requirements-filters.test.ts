@@ -13,7 +13,7 @@ test("Mis requerimientos conserva cliente, sede y Observado",()=>{
 test("Mis requerimientos convierte rangos de prendas y unidades para la RPC",()=>{
   const filters={...EMPTY_REQUIREMENT_FILTERS,prendasMin:"10",prendasMax:"12",unidadesMin:"12",unidadesMax:"20",q:"Pérez"};
   assert.deepEqual(requirementRpcArgs(filters),{
-    p_cliente_id:null,p_unidad_id:null,p_estado:null,p_genero:null,
+    p_cliente_id:null,p_unidad_id:null,p_estado:null,p_genero:null,p_renovacion:null,
     p_prendas_min:10,p_prendas_max:12,p_unidades_min:12,p_unidades_max:20,p_busqueda:"Pérez",
   });
 });

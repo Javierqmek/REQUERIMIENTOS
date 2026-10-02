@@ -91,7 +91,7 @@ Una hoja llamada SIDIGE. Primera fila con estos diez encabezados exactos, sin t�
 | Columna | Origen y regla | Tipo |
 | --- | --- | --- |
 | Comentario | Cargo + nombre completo + DNI, trim y espacios simples | Texto |
-| Ref.Int. | Siempre RENOVACION VERANO, incluso con referencia histórica distinta | Texto |
+| Ref.Int. | `RENOVACION ` + la renovación del requerimiento (VERANO o INVIERNO), incluso con referencia histórica distinta | Texto |
 | Num. Real | Nombre de cliente + nombre de unidad separados por un espacio | Texto |
 | Glosa | Exactamente igual a Comentario | Texto |
 | Num. Item | 1…N dentro de cada requerimiento; reinicia en 1 | Entero |
@@ -105,7 +105,7 @@ Una fila por prenda del requerimiento. Orden de requerimientos por fecha/id desc
 
 No se sustituye el precio histórico por el precio actual ni la cantidad histórica por la cantidad del maestro. Precio cero es válido. Los textos se escriben como texto, nunca como fórmulas, incluso si un código empieza por “=”.
 
-Nombre: `MIGRADOR_RENOVACION_VERANO_YYYYMMDD_HHmm.xlsx`, con fecha/hora de Perú.
+Nombre: `MIGRADOR_RENOVACION_<VERANO|INVIERNO|TODAS>_YYYYMMDD_HHmm.xlsx` (según el filtro de renovación; TODAS si no hay filtro), con fecha/hora de Perú.
 
 Se utiliza [ExcelJS](https://github.com/exceljs/exceljs#streaming-xlsx), solamente en servidor. El escritor confirma las filas progresivamente y mantiene en memoria el archivo comprimido final, no todas las filas/celdas del libro.
 

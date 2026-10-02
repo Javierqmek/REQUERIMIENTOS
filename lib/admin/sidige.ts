@@ -26,6 +26,7 @@ export function toSidigeRows(requirement: SidigeRequirement): SidigeRow[] {
   const cargo = required(requirement.personal?.cargo, "Cargo");
   const cliente = required(requirement.clientes?.nombre, "Cliente");
   const unidad = required(requirement.unidades?.nombre, "Unidad");
+  const renovacion = required(requirement.renovacion, "Renovación");
   const comment = [cargo, nombre, dni].join(" ");
   const destination = [cliente, unidad].join(" ");
   if (comment.length > 32767 || destination.length > 32767) missing.add("Texto demasiado largo para Excel");
@@ -46,7 +47,7 @@ export function toSidigeRows(requirement: SidigeRequirement): SidigeRow[] {
     const price = typeof detail.precio_unitario === "number" || (typeof detail.precio_unitario === "string" && detail.precio_unitario.trim() !== "")
       ? Number(detail.precio_unitario) : NaN;
     if (!Number.isFinite(price) || price < 0) missing.add(label + ": precio");
-    return [comment, "RENOVACION VERANO", destination, comment, index + 1, almacen, codigo, descripcion, quantity, price];
+    return [comment, "RENOVACION " + renovacion, destination, comment, index + 1, almacen, codigo, descripcion, quantity, price];
   });
   if (missing.size) throw new SidigeValidationError([{ id: requirement.id, agente: nombre || "Agente sin nombre", campos: [...missing] }]);
   return rows;

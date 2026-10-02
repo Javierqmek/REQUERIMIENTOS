@@ -103,9 +103,9 @@ npm run build
 
 Prepara archivos CSV con encabezados equivalentes a las columnas de cada tabla. En Supabase abre **Table Editor** y usa **Insert > Import data from CSV**. Orden: clientes → unidades → personal → prendas.
 
-Para `clientes`: `nombre,activo`. Para `unidades`: `cliente_id,nombre,activo` (usa los UUID generados en clientes). Para `personal`: `codigo_personal,nombre,dni,cargo,activo`. Para `prendas`: `codigo_prenda,nombre_prenda,genero,codigo_almacen,precio,cantidad,cliente,activo`.
+Para `clientes`: `nombre,activo`. Para `unidades`: `cliente_id,nombre,renovacion_defecto,activo` (usa los UUID generados en clientes; `renovacion_defecto` es VERANO o INVIERNO y vale VERANO si se omite). Para `personal`: `codigo_personal,nombre,dni,cargo,activo`. Para `prendas`: `codigo_prenda,nombre_prenda,genero,renovacion,codigo_almacen,precio,cantidad,cliente,activo`.
 
-No incluyas `id` ni `created_at`: Supabase los genera. `genero` admite HOMBRE, MUJER y AMBOS; HOMBRE/MUJER y UNISEX se normalizan como AMBOS. Conserva DNI y códigos como texto; en Excel conviene asignar formato **Texto** antes de guardar el CSV. El valor de `prendas.cliente` debe coincidir exactamente con `clientes.nombre`. La cantidad debe ser un entero positivo; si se omite vale 1. El agente no tiene destino asignado: cliente y unidad se eligen en cada requerimiento.
+No incluyas `id` ni `created_at`: Supabase los genera. `genero` admite HOMBRE, MUJER y AMBOS; HOMBRE/MUJER y UNISEX se normalizan como AMBOS. `renovacion` admite VERANO, INVIERNO y AMBOS (vale AMBOS si se omite). Conserva DNI y códigos como texto; en Excel conviene asignar formato **Texto** antes de guardar el CSV. El valor de `prendas.cliente` debe coincidir exactamente con `clientes.nombre`. La cantidad debe ser un entero positivo; si se omite vale 1. El agente no tiene destino asignado: cliente y unidad se eligen en cada requerimiento.
 
 ## 8. Desplegar en Vercel
 
@@ -151,6 +151,16 @@ Ejecuta únicamente las migraciones pendientes en el orden del apartado 3 antes 
 ## Administración y Excel SIDIGE
 
 Consulta [clasificación e importación de prendas por género](docs/prendas-genero.md) antes de desplegar el nuevo selector. La migración debe aplicarse primero; no agrega género a SIDIGE ni al detalle histórico.
+
+## Tipo de renovación (Verano / Invierno) y prendas no repetidas
+
+Aplica `202610020001_renovacion_prendas_unicas.sql` (una sola ejecución, después de `202609250002`). Las prendas existentes quedan como AMBOS y los requerimientos existentes como VERANO.
+
+- **Formulario**: antes de "Género" se elige el *Tipo de renovación* (obligatorio). Al elegir la unidad se preselecciona su "Renovación por defecto" (Mantenimiento → Unidades, Verano por defecto), pero el usuario puede cambiarla. Una prenda aparece si su renovación es la elegida o AMBOS y su género es el elegido o AMBOS. Si al cambiar renovación o género hay prendas que ya no corresponden, se avisa y se quitan.
+- **Mantenimiento → Prendas** edita `renovacion` (VERANO, INVIERNO, AMBOS); **Mantenimiento → Unidades** edita `renovacion_defecto`.
+- **Importación de prendas (CSV)**: columnas `codigo_prenda, nombre_prenda, codigo_almacen, precio, cantidad, cliente, genero, renovacion, activo`. `renovacion` (o `Renovación`) acepta Verano, Invierno o Ambos sin importar mayúsculas ni tildes; un valor inválido se informa con el número de fila. No hay plantilla Excel en el repositorio: el archivo de ejemplo es el CSV con esos encabezados.
+- **Detalle, listados, filtros y exportaciones** (CSV y Excel SIDIGE) muestran y filtran por renovación. La columna *Ref.Int.* de SIDIGE ahora es `RENOVACION VERANO` o `RENOVACION INVIERNO` según el requerimiento, y el archivo se llama `MIGRADOR_RENOVACION_<VERANO|INVIERNO|TODAS>_AAAAMMDD_HHmm.xlsx`.
+- **Una prenda una sola vez por requerimiento**: si se necesita más, se sube la cantidad (fija en el maestro). El mismo trabajador sí puede tener la misma prenda en otro requerimiento. En pantalla las ya agregadas salen en gris, tachadas, con la etiqueta "Ya agregada" y no se pueden elegir (al crear y al editar); en servidor lo valida la RPC (`22023`) y el índice único parcial `detalle_prenda_activa_unique` (requerimiento, prenda) entre líneas activas, vigente desde `202609020004`.
 
 Los totales visibles en creación, Mis requerimientos y Administración se documentan en [totales de requerimientos](docs/totales-requerimientos.md). En una instalación ya migrada aplica únicamente `202609100002_totales_requerimientos.sql`, después de la migración de género y antes de desplegar este frontend.
 

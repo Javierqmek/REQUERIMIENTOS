@@ -15,6 +15,7 @@ import { GarmentGenderPicker } from "@/components/garment-gender-picker";
 import { RequirementTotal } from "@/components/requirement-total";
 import { useActiveCatalog } from "@/components/use-active-catalog";
 import { genderLabel, inferGender, isGenderCompatible, type GenderChoice } from "@/lib/garments/gender";
+import { garmentChoices, garmentFits, renovacionLabel } from "@/lib/garments/renovacion";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
 
 export function EditRequirement({ initial, profile }: { initial: EditPayload; profile: Profile }) {
@@ -31,10 +32,12 @@ export function EditRequirement({ initial, profile }: { initial: EditPayload; pr
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const savingRef = useRef(false);
-  const genderValues = useMemo(() => gender ? [gender, "AMBOS"] : [], [gender]);
+  // La renovación del requerimiento no se edita: solo se ofrecen prendas de esa renovación o AMBOS.
+  const inFilters = useMemo(() => ({ genero: gender ? [gender, "AMBOS"] : [], renovacion: [row.renovacion, "AMBOS"] }), [gender, row.renovacion]);
   const garments = useActiveCatalog<Prenda>(db, "prendas", allowed && Boolean(row.clientes?.nombre && gender) && !success,
-    { column: "cliente", value: row.clientes?.nombre ?? "" }, { column: "genero", values: genderValues });
-  const visibleGarments = garments.rows.filter(garment => gender && isGenderCompatible(garment.genero, gender));
+    { column: "cliente", value: row.clientes?.nombre ?? "" }, inFilters);
+  const visibleGarments = garments.rows.filter(garment => gender && garmentFits(garment, row.renovacion, gender));
+  const choices = garmentChoices(visibleGarments, lines.map(line => line.prenda_id));
   const chosen = visibleGarments.find(p => p.id === selected);
   const disabled = saving || conflict;
   const total = catalogTotal(lines);
@@ -79,12 +82,12 @@ export function EditRequirement({ initial, profile }: { initial: EditPayload; pr
       <div className="section-card mt-4"><Alert kind="success">Prendas actualizadas correctamente.</Alert><p className="mt-3 text-sm text-[#607089]">Las líneas retiradas se conservaron como historial.</p><Link href={`/requerimientos/${row.id}`} className="btn btn-secondary mt-4">Ver requerimiento</Link></div> :
       <form onSubmit={save} className="mt-4" aria-busy={saving}>
         <section className="section-card">
-          <h2 className="section-title">Prendas solicitadas</h2><p className="mt-1 text-sm text-[#607089]">Puedes agregar o retirar prendas. La cantidad es fija; las prendas conservadas mantienen su precio y código históricos.</p>
+          <h2 className="section-title">Prendas solicitadas</h2><p className="mt-1 text-sm text-[#607089]">Puedes agregar o retirar prendas de la renovación {renovacionLabel(row.renovacion)}. Cada prenda se agrega una sola vez y la cantidad es fija; las prendas conservadas mantienen su precio y código históricos.</p>
           {row.clientes && <GarmentGenderPicker value={gender} disabled={disabled} onChange={changeGender}/>}
-          {!row.clientes ? <p className="mt-3 text-sm text-[#607089]">Este requerimiento histórico no tiene cliente. Puedes conservar o retirar líneas, pero no agregar prendas.</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para filtrar las prendas que puedes agregar.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button type="button" onClick={garments.retry} className="btn btn-ghost">Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente y género.</p>}
+          {!row.clientes ? <p className="mt-3 text-sm text-[#607089]">Este requerimiento histórico no tiene cliente. Puedes conservar o retirar líneas, pero no agregar prendas.</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para filtrar las prendas que puedes agregar.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button type="button" onClick={garments.retry} className="btn btn-ghost">Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente, renovación y género.</p>}
           <div className="mt-4 grid grid-cols-[88px_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_96px_auto]">
             <div className="col-span-2 min-w-0 sm:col-span-1"><label htmlFor="edit-prenda" className="mb-1 block text-xs font-medium text-[#607089]">Prenda</label><select id="edit-prenda" className="input" value={selected} disabled={disabled || garments.loading || garments.error || !garments.rows.length} onChange={event => setSelected(event.target.value)}>
-              <option value="">Selecciona una prenda</option>{visibleGarments.map(p => <option key={p.id} value={p.id} disabled={lines.some(l => l.prenda_id === p.id)}>{p.nombre_prenda} · Cant. {p.cantidad}</option>)}
+              <option value="">Selecciona una prenda</option>{choices.map(({ garment: p, added }) => <option key={p.id} value={p.id} disabled={added} className={added ? "text-[#8794A8] line-through" : undefined}>{p.nombre_prenda} · Cant. {p.cantidad}{added ? " · Ya agregada" : ""}</option>)}
             </select></div>
             <div><span id="fixed-quantity" className="mb-1 block text-xs font-medium text-[#607089]">Cantidad fija</span><output aria-labelledby="fixed-quantity" className="flex min-h-11 items-center rounded-lg border border-[#DCE3EC] bg-[#F5F8FD] px-3 text-sm">{chosen?.cantidad ?? "—"}</output></div>
             <button type="button" onClick={add} disabled={disabled || !chosen || lines.some(l => l.prenda_id === chosen.id)} className="btn btn-secondary"><Plus size={17}/>Agregar</button>

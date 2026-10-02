@@ -54,7 +54,8 @@ test("CSV y XLSX real excluyen líneas inactivas incluso si la fuente las incluy
   const row = fixtureRequirement();
   row.detalle_requerimiento.push({ ...row.detalle_requerimiento[0], id: "retirada", activo: false, cantidad: 900, codigo_almacen: "RETIRADA" });
   assert.equal(CSV_HEADERS[1], "Coordinador");
-  assert.equal(toCsvRows(row).length, 1); assert.equal(toCsvRows(row)[0][8], 2);
+  assert.equal(CSV_HEADERS[7], "Renovación"); assert.equal(toCsvRows(row)[0][7], "VERANO");
+  assert.equal(toCsvRows(row).length, 1); assert.equal(toCsvRows(row)[0][9], 2);
   assert.equal(toSidigeRows(row).length, 1); assert.equal(toSidigeRows(row)[0][4], 1);
   async function* source() { yield row; }
   const bytes = await buildSidigeWorkbook(source());

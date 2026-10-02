@@ -14,7 +14,7 @@ import type { AdminFilters } from "../../lib/admin/filters";
 import type { AdminOptions, SidigeRequirement } from "../../lib/admin/types";
 import type { Estado } from "../../lib/types";
 import { parseRequirementQuery, type RequirementFilters } from "../../lib/requirements/list-filters";
-import { editGarments } from "../fixtures/edit";
+import { editGarments, inviernoGarment, veranoGarment } from "../fixtures/edit";
 import { PDFDocument } from "pdf-lib";
 import { makeCorporateStamp } from "../../lib/documents/security";
 
@@ -30,14 +30,14 @@ const initialRecords = Array.from({ length: 62 }, (_, index) => {
     cliente_id: options.clientes[other ? 1 : 0].id, unidad_id: options.unidades[other ? 1 : 0].id,
     clientes: { nombre: options.clientes[other ? 1 : 0].nombre }, unidades: { nombre: options.unidades[other ? 1 : 0].nombre },
     personal: { cargo: "AGENTE", nombre: index === 0 ? "RAMÍREZ RIVERA JERY" : index === 1 ? "MARÍA DE LOS ÁNGELES FERNÁNDEZ DEL CASTILLO" : "AGENTE OPERATIVO " + (index + 1), dni: "071389725" },
-    estado: (["Pendiente", "Atendido", "Observado"] as Estado[])[index % 3],
+    estado: (["Pendiente", "Atendido", "Observado"] as Estado[])[index % 3], renovacion: index % 5 === 4 ? "INVIERNO" : "VERANO",
     cantidad_prendas: index % 4 + 1, unidades_totales: index % 4 + 3,
     generos: [["HOMBRE"],["MUJER"],["AMBOS"]][index % 3] as ("HOMBRE"|"MUJER"|"AMBOS")[],
   });
 });
 const initialCatalogRows = {
   clientes: options.clientes.map((row,index)=>({...row,activo:index===0})),
-  unidades: options.unidades.map((row,index)=>({...row,clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
+  unidades: options.unidades.map((row,index)=>({...row,renovacion_defecto:"VERANO",clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
   prendas: editGarments.map((row,index)=>({...row,activo:index!==1})),
   provincias: [{id:"aa100000-0000-4000-8000-000000000001",nombre:"Lima",activo:true},{id:"aa100000-0000-4000-8000-000000000002",nombre:"Arequipa",activo:true}],
@@ -54,7 +54,7 @@ function filtered(filters: VisualFilters,records=initialRecords) {
   if (filters.q === "sesion") return [fixtureRequirement()];
   if (filters.q === "incompleto") return [fixtureRequirement({ unidades: null })];
   return records.filter(row => (!filters.cliente || row.cliente_id === filters.cliente) && (!filters.unidad || row.unidad_id === filters.unidad) &&
-    (!filters.coordinador || row.usuario_creador_id === filters.coordinador) && (!filters.estado || row.estado === filters.estado) &&
+    (!filters.coordinador || row.usuario_creador_id === filters.coordinador) && (!filters.estado || row.estado === filters.estado) && (!filters.renovacion || row.renovacion === filters.renovacion) &&
     (!filters.genero || (filters.genero==="AMBOS"?row.generos?.includes("AMBOS"):row.generos?.some(value=>value===filters.genero||value==="AMBOS"))) &&
     (!filters.prendasMin || row.cantidad_prendas>=Number(filters.prendasMin)) && (!filters.prendasMax || row.cantidad_prendas<=Number(filters.prendasMax)) &&
     (!filters.unidadesMin || row.unidades_totales>=Number(filters.unidadesMin)) && (!filters.unidadesMax || row.unidades_totales<=Number(filters.unidadesMax)) &&
@@ -82,8 +82,8 @@ async function main() {
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
           `const catalogs=${JSON.stringify({
             clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true }],
-            unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", activo: true }],
-            prendas: editGarments,
+            unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", renovacion_defecto: "VERANO", activo: true }, { id: "66000000-0000-4000-8000-000000000003", cliente_id: IDS.cliente, nombre: "SEDE ANDINA INVIERNO", renovacion_defecto: "INVIERNO", activo: true }],
+            prendas: [...editGarments, inviernoGarment, veranoGarment],
             provincias: [{ id: "aa100000-0000-4000-8000-000000000001", nombre: "AREQUIPA", activo: true }, { id: "aa100000-0000-4000-8000-000000000002", nombre: "CUSCO", activo: true }],
           })}; const agents=[{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA AGENTE OPERATIVA",dni:"12345678",cargo:"AGENTE",activo:true},{id:"22000000-0000-4000-8000-000000000002",codigo_personal:"PER-002",nombre:"CARLOS REEMPLAZO OPERATIVO",dni:"87654321",cargo:"AGENTE",activo:true}];
           export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name){const result=name==="buscar_personal"?{data:agents,error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(table==="papeletas_vacaciones"?[{id:"aa000000-0000-4000-8000-000000000099"}]:(table==="provincias"&&new URLSearchParams(window.location.search).get("sinProvincias")==="1")?[]:(catalogs[table]||[]))];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}},async maybeSingle(){await new Promise(r=>setTimeout(r,20));return {data:rows[0]??null,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
@@ -195,7 +195,7 @@ async function main() {
         if (url.pathname.endsWith("/sidige")) {
           try {
             const bytes = await buildSidigeWorkbook(groups(filtered(filters,records)));
-            res.writeHead(200, { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="' + sidigeFilename() + '"' }); res.end(bytes);
+            res.writeHead(200, { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="' + sidigeFilename(new Date(), filters.renovacion) + '"' }); res.end(bytes);
           } catch (error) {
             sendJson(error instanceof SidigeValidationError ? { error: error.message, issues: error.issues, totalIncomplete: error.total } : { error: "No hay requerimientos para exportar con los filtros seleccionados." }, 422);
           }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RENOVACIONES } from "@/lib/garments/renovacion";
 
 export const loginSchema = z.object({
   email: z.string().email("Ingresa un correo válido"),
@@ -9,6 +10,7 @@ export const requerimientoSchema = z.object({
   agente_id: z.string().uuid(),
   cliente_id: z.string().uuid("Selecciona un cliente"),
   unidad_id: z.string().uuid("Selecciona una unidad"),
+  renovacion: z.enum(RENOVACIONES, { error: "Selecciona el tipo de renovación" }),
   detalles: z.array(z.object({
     prenda_id: z.string().uuid(),
   })).min(1, "Agrega al menos una prenda").superRefine((rows, ctx) => {

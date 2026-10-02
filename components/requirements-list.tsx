@@ -7,6 +7,7 @@ import { NavigationLink } from "@/components/ui/navigation-link";
 import { Alert } from "@/components/ui/alert";
 import { RequirementsFilters } from "@/components/requirements-filters";
 import { formatMoney } from "@/lib/requirements/money";
+import { renovacionLabel } from "@/lib/garments/renovacion";
 import { EMPTY_REQUIREMENT_FILTERS, requirementFilterParams, requirementFiltersSchema, type RequirementFilters } from "@/lib/requirements/list-filters";
 import type { RequirementListOptions, RequirementListResult } from "@/lib/requirements/list-data";
 
@@ -40,7 +41,7 @@ export function RequirementsList({initial,options,initialFilters=EMPTY_REQUIREME
     {error&&<div className="mb-3"><Alert kind="error">{error}</Alert></div>}
     <div className={`overflow-hidden rounded-xl border border-[#DCE3EC] bg-white ${loading?"opacity-60":""}`} aria-busy={loading}>
       {result.rows.length?result.rows.map(row=><NavigationLink href={`/requerimientos/${row.id}`} key={row.id} className="flex w-full items-center gap-3 border-b border-[#E8EDF4] px-4 py-3 text-left last:border-b-0 hover:bg-[#F8FAFD]">
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-[#172033]">{row.personal?.nombre}</h3><StatusBadge estado={row.estado}/></div><p className="mt-0.5 text-xs text-[#607089]">{row.clientes?.nombre??LEGACY_CLIENT} · {row.unidades?.nombre??LEGACY_UNIT}</p><p className="mt-1 text-xs font-medium text-[#607089]">{row.cantidad_prendas??0} prendas · {row.unidades_totales??0} unidades</p><p className="mt-1 text-xs text-[#8794A8]">{new Intl.DateTimeFormat("es-PE",{dateStyle:"medium",timeStyle:"short"}).format(new Date(row.fecha))}</p></div>
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-[#172033]">{row.personal?.nombre}</h3><StatusBadge estado={row.estado}/></div><p className="mt-0.5 text-xs text-[#607089]">{row.clientes?.nombre??LEGACY_CLIENT} · {row.unidades?.nombre??LEGACY_UNIT}{row.renovacion?` · ${renovacionLabel(row.renovacion)}`:""}</p><p className="mt-1 text-xs font-medium text-[#607089]">{row.cantidad_prendas??0} prendas · {row.unidades_totales??0} unidades</p><p className="mt-1 text-xs text-[#8794A8]">{new Intl.DateTimeFormat("es-PE",{dateStyle:"medium",timeStyle:"short"}).format(new Date(row.fecha))}</p></div>
         <div className="shrink-0 text-right"><span className="block text-[11px] text-[#607089]">Total</span><strong className="mt-0.5 block text-sm font-semibold tabular-nums text-[#0B1F3A]">{formatMoney(row.total_requerimiento)}</strong></div>
       </NavigationLink>):<div className="p-6 text-center"><ClipboardList className="mx-auto text-[#8794A8]" size={24}/><p className="mt-2 text-sm font-semibold text-[#172033]">No hay requerimientos con estos filtros.</p><p className="mt-0.5 text-xs text-[#607089]">Limpia o ajusta los filtros para ampliar la búsqueda.</p></div>}
     </div>

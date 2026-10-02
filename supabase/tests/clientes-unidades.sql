@@ -53,23 +53,21 @@ with changed as (update unidades set nombre='QA No autorizado' where nombre='QA 
 select pg_temp.assert_true((select count(*)=0 from changed),'coordinador no modifica unidades');
 
 -- La creación normal acepta solo IDs; valores manuales deben rechazarse.
-select crear_requerimiento(
-'22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001',
-'[{"prenda_id":"33000000-0000-4000-8000-000000000001"}]');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','[{"prenda_id":"33000000-0000-4000-8000-000000000001","cantidad":999,"precio_unitario":0,"codigo_almacen":"FALSO"}]')$cmd$,'Solo se aceptan identificadores');
+select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"33000000-0000-4000-8000-000000000001"}]',gen_random_uuid());
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"33000000-0000-4000-8000-000000000001","cantidad":999,"precio_unitario":0,"codigo_almacen":"FALSO"}]',gen_random_uuid())$cmd$,'Solo se aceptan identificadores');
 select pg_temp.assert_true((select count(*)=1 and bool_and(d.cantidad=3 and d.precio_unitario=25.75 and d.codigo_almacen='QA-ALM')
 from detalle_requerimiento d join requerimientos r on r.id=d.requerimiento_id
 where r.usuario_creador_id=auth.uid()),'cantidad, precio y código del maestro');
 select pg_temp.assert_true((select bool_and(cliente_id='55000000-0000-4000-8000-000000000001' and unidad_id='66000000-0000-4000-8000-000000000001'
 and referencia_interna='RENOVACION VERANO' and estado='Pendiente' and fecha is not null) from requerimientos where usuario_creador_id=auth.uid()),'cabecera con destino y valores originales');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000002','[{"prenda_id":"33000000-0000-4000-8000-000000000001"}]')$cmd$,'Selecciona una unidad activa del cliente');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000003','[{"prenda_id":"33000000-0000-4000-8000-000000000001"}]')$cmd$,'Selecciona una unidad activa del cliente');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000003','66000000-0000-4000-8000-000000000001','[]')$cmd$,'Selecciona un cliente activo');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','[{"prenda_id":"33000000-0000-4000-8000-000000000002"}]')$cmd$,'La prenda no corresponde');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','[{"prenda_id":"33000000-0000-4000-8000-000000000001"},{"prenda_id":"33000000-0000-4000-8000-000000000001"}]')$cmd$,'Detalles inválidos o duplicados');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','[{}]')$cmd$,'Solo se aceptan identificadores');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','[]')$cmd$,'Debe incluir prendas');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001',null)$cmd$,'Debe incluir prendas');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000002','VERANO','[{"prenda_id":"33000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$cmd$,'Selecciona una unidad activa del cliente');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000003','VERANO','[{"prenda_id":"33000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$cmd$,'Selecciona una unidad activa del cliente');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000003','66000000-0000-4000-8000-000000000001','VERANO','[]',gen_random_uuid())$cmd$,'Selecciona un cliente activo');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"33000000-0000-4000-8000-000000000002"}]',gen_random_uuid())$cmd$,'La prenda no corresponde');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"33000000-0000-4000-8000-000000000001"},{"prenda_id":"33000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$cmd$,'Detalles inválidos o duplicados');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[{}]',gen_random_uuid())$cmd$,'Solo se aceptan identificadores');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[]',gen_random_uuid())$cmd$,'Debe incluir prendas');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO',null,gen_random_uuid())$cmd$,'Debe incluir prendas');
 select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','[]')$cmd$,'Actualiza la aplicación');
 select pg_temp.expect_error($cmd$insert into requerimientos(agente_id,usuario_creador_id) values('22000000-0000-4000-8000-000000000001',auth.uid())$cmd$,'permission denied');
 select pg_temp.assert_true((select count(*)=1 from requerimientos where usuario_creador_id=auth.uid()),'fallos no dejan cabeceras parciales');
@@ -104,6 +102,6 @@ select pg_temp.assert_true((select count(*)=7 from pg_class c join pg_namespace 
 set local role anon;
 select pg_temp.expect_error($cmd$select * from clientes$cmd$,'permission denied');
 select pg_temp.expect_error($cmd$select * from unidades$cmd$,'permission denied');
-select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','[]')$cmd$,'permission denied');
+select pg_temp.expect_error($cmd$select crear_requerimiento('22000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001','VERANO','[]',gen_random_uuid())$cmd$,'permission denied');
 reset role;
 rollback;
