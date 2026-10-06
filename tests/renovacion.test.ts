@@ -94,7 +94,7 @@ test("importación sin la columna renovacion se rechaza por encabezados", async 
 });
 
 // --- Renovación en el catálogo (prendas y unidades) ------------------------------------------
-const garmentValues = { codigo_prenda: "G1", nombre_prenda: "Camisa", codigo_almacen: "A1", precio: 20, genero: "AMBOS" };
+const garmentValues = { codigo_prenda: "G1", nombre_prenda: "Camisa", codigo_almacen: "A1", precio: 20 };
 const asignacion = { cliente_id: CLIENTE, genero: "AMBOS", cantidad: 1, activo: true };
 test("Mantenimiento → Prendas: la renovación va en cada asignación (VERANO, INVIERNO o AMBOS)", () => {
   for (const renovacion of ["VERANO", "INVIERNO", "AMBOS"]) assert.ok(catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...asignacion, renovacion }] } }).success);
@@ -173,4 +173,23 @@ test("servidor (API): prenda repetida en el cuerpo → 400 sin llamar a la RPC; 
   const dup = [{ prenda_id: garments[0].id }, { prenda_id: garments[0].id }];
   assert.equal((await editHandler()(editBody(dup), id)).status, 400);
   for (const code of ["22023", "23505"]) assert.equal((await editHandler(code)(editBody([{ prenda_id: garments[0].id }]), id)).status, 400);
+});
+test("la ficha ya no admite género y cada asignación lo exige (Hombre, Mujer o Ambos)", () => {
+  const ok = catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...asignacion, renovacion: "AMBOS", genero: "HOMBRE" }] } });
+  assert.ok(ok.success);
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, genero: "AMBOS" } }).success);
+  const { genero, ...sinGenero } = asignacion; void genero;
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...sinGenero, renovacion: "AMBOS" }] } }).success);
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...asignacion, renovacion: "AMBOS", genero: "NIÑOS" }] } }).success);
+});
+test("el alcance del cambio de precio solo admite ahora, tramite o todos", () => {
+  for (const alcance of ["ahora", "tramite", "todos"]) assert.ok(catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, alcance } }).success);
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, alcance: "siempre" } }).success);
+});
+test("crear requerimiento exige el género (Hombre o Mujer) y la edición lo envía a la base", async () => {
+  assert.ok(!requerimientoSchema.safeParse({ ...base, genero: undefined, renovacion: "VERANO" }).success);
+  assert.ok(!requerimientoSchema.safeParse({ ...base, genero: "AMBOS", renovacion: "VERANO" }).success);
+  assert.match(await readFile("components/new-requirement.tsx", "utf8"), /p_genero: parsed\.data\.genero/);
+  assert.match(await readFile("lib/requirements/handlers.ts", "utf8"), /p_genero: input\.genero \?\? null/);
+  assert.match(await readFile("components/edit-requirement.tsx", "utf8"), /genero: gender/);
 });
