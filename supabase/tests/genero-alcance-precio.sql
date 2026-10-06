@@ -141,7 +141,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub','f1000000-0000-4000-8000-000000000001',true);
 select set_config('qa.imp2',public.admin_impacto_cambio_ficha(current_setting('qa.cam')::uuid,50,'UNF4')::text,true);
-select pg_temp.ok((current_setting('qa.imp2')::jsonb->'tramite'->>'lineas')::int=3 and (current_setting('qa.imp2')::jsonb->'todos'->>'lineas')::int=5,'impacto 45 -> 50: 3 líneas en trámite (la nueva incluida, r1 no: sigue en 40... ver abajo) y 5 en total');
+select pg_temp.ok((current_setting('qa.imp2')::jsonb->'tramite'->>'lineas')::int=4 and (current_setting('qa.imp2')::jsonb->'todos'->>'lineas')::int=5,'impacto 45 -> 50: 4 líneas en trámite (r1, Pendiente, Observado y la nueva) y 5 en total');
 select public.admin_guardar_catalogo('prendas',current_setting('qa.cam')::uuid,'{"codigo_prenda":"CAM001","nombre_prenda":"CAMISA","codigo_almacen":"UNF4","precio":50,"alcance":"tramite"}');
 select pg_temp.ok(pg_temp.precios()='Atendido:40.00 Observado:50.00 Pendiente:50.00','"También en trámite": Pendiente y Observado pasan a 50; Atendido sigue en 40');
 reset role;
@@ -185,7 +185,7 @@ select pg_temp.denied($q$select public.admin_importar_prendas('f2000000-0000-400
 select pg_temp.denied($q$select public.admin_importar_prendas('f2000000-0000-4000-8000-000000000001','[{"fila":2,"codigo_prenda":"CAM001","nombre_prenda":"CAMISA MANGA LARGA","codigo_almacen":"UNF4B","precio":60,"cantidad":2,"genero":"HOMBRE","renovacion":"AMBOS","activo":true}]',true,'{"CAM001":"siempre"}'::jsonb)$q$,'22023','alcance inválido');
 select public.admin_importar_prendas('f2000000-0000-4000-8000-000000000001','[{"fila":2,"codigo_prenda":"CAM001","nombre_prenda":"CAMISA MANGA LARGA","codigo_almacen":"UNF4B","precio":60,"cantidad":2,"genero":"HOMBRE","renovacion":"AMBOS","activo":true}]',true,'{"CAM001":"ahora"}'::jsonb);
 reset role;
-select pg_temp.ok((select precio=60 from public.prendas where codigo_prenda='CAM001') and (select count(*)=5 and bool_and(precio_unitario=55) from public.detalle_requerimiento where prenda_id=current_setting('qa.cam')::uuid and requerimiento_id<>current_setting('qa.r1')::uuid or true),'importar con "Solo desde ahora": la ficha pasa a 60');
+select pg_temp.ok((select precio=60 from public.prendas where codigo_prenda='CAM001'),'importar con "Solo desde ahora": la ficha pasa a 60');
 select pg_temp.ok((select count(*)=5 and bool_and(precio_unitario=55) from public.detalle_requerimiento where prenda_id=current_setting('qa.cam')::uuid),'...y ninguna línea cambia (las 5 siguen en 55)');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','f1000000-0000-4000-8000-000000000003',true);
