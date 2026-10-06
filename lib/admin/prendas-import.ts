@@ -9,13 +9,18 @@ import type { ImportIssue } from "./maintenance";
 export const PRENDAS_REQUIRED_HEADERS = ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "genero", "renovacion", "activo"] as const;
 export const PRENDAS_OPTIONAL_HEADERS = ["cliente"] as const;
 
+export const ALCANCES = ["ahora", "tramite", "todos"] as const;
+export type Alcance = (typeof ALCANCES)[number];
+export type Impacto = { precio_cambia: boolean; almacen_cambia: boolean; tramite: { requerimientos: number; lineas: number }; todos: { requerimientos: number; lineas: number } };
 export type PrendasPreview = {
   aplicado: boolean; cliente: string; prendas_nuevas: number; asignaciones_nuevas: number;
-  cantidades_actualizadas: number; estados_actualizados: number; sin_cambios: number;
-  alertas: { codigo: string; nombre: string; cambios: { campo: string; actual: string; archivo: string }[] }[];
-  conflictos: { fila: number; codigo: string; renovacion: string; otras: string[] }[];
+  cantidades_actualizadas: number; generos_actualizados: number; estados_actualizados: number; sin_cambios: number;
+  // Alertas de ficha: solo precio, nombre y código de almacén (el género es de la asignación del cliente).
+  alertas: { codigo: string; nombre: string; cambios: { campo: string; actual: string; archivo: string }[]; impacto: Impacto | null }[];
+  renovaciones_actualizadas: { codigo: string; nombre: string; de: string; a: string }[];
   desactivar: { codigo: string; nombre: string; renovacion: string; cantidad: number }[];
   fichas_inactivas: string[];
+  cambios_ficha: { codigo: string; alcance: Alcance; requerimientos: number; lineas: number }[];
 };
 export type PrendasImportPreview = { rows: Record<string, unknown>[]; issues: ImportIssue[]; nuevos: number; actualizados: number; omitidos: number; errores: number; prendas: PrendasPreview };
 
@@ -23,7 +28,10 @@ export const prendasPayloadSchema = z.object({
   kind: z.literal("prendas"), cliente_id: z.string().uuid("Selecciona el cliente del archivo."),
   headers: z.array(z.string()).max(12), rows: z.array(z.record(z.string(), z.string())).min(1).max(1000),
   mode: z.enum(["preview", "apply"]), reemplazar: z.boolean().default(false),
-  actualizar: z.array(z.string().max(80)).max(1000).default([]),
+  // Fichas cuyos datos se actualizan con los del archivo y con qué alcance sobre requerimientos existentes.
+  actualizar: z.record(z.string().max(80), z.enum(ALCANCES)).default({}),
+  // Número de fila ORIGINAL de cada fila (Excel), para que los errores la indiquen aunque se omitan filas vacías.
+  filas: z.array(z.number().int().min(1).max(2000000)).max(1000).optional(),
 }).strict();
 export type PrendasPayload = z.infer<typeof prendasPayloadSchema>;
 // Mensaje pensado para mostrarse tal cual al usuario.
@@ -47,6 +55,20 @@ export function normalizeGenero(value: string | undefined) {
   return text === "UNISEX" || text === "HOMBRE/MUJER" ? "AMBOS" : null;
 }
 
+// "S/ 60.00", "S/ 1,250.50", "1.250,50", "60,5", "PEN 60": devuelve un número con hasta 2 decimales, o null.
+export function parsePrecio(value: string | undefined) {
+  let text = cleanCell(value).replace(/^(S\/\.?|PEN|\$|USD)\s*/i, "").replace(/\s+/g, "");
+  if (!/^\d[\d.,]*$/.test(text)) return null;
+  const lastDot = text.lastIndexOf("."), lastComma = text.lastIndexOf(",");
+  if (lastDot >= 0 && lastComma >= 0) {
+    const decimal = lastDot > lastComma ? "." : ",";
+    text = text.split(decimal === "." ? "," : ".").join("").replace(decimal, ".");
+  } else if (lastComma >= 0) {
+    text = /^\d{1,3}(,\d{3})+$/.test(text) ? text.replace(/,/g, "") : text.replace(",", ".");
+  }
+  return /^\d+(\.\d{1,2})?$/.test(text) ? Number(text) : null;
+}
+
 type Row = { fila: number; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string; precio: number; cantidad: number; genero: string; renovacion: string; activo: boolean };
 
 export function checkPrendasHeaders(headers: string[]) {
@@ -57,10 +79,10 @@ export function checkPrendasHeaders(headers: string[]) {
   }
 }
 
-export function validatePrendasRows(rows: Record<string, string>[], clienteNombre: string) {
+export function validatePrendasRows(rows: Record<string, string>[], clienteNombre: string, filas?: number[]) {
   const issues: ImportIssue[] = []; const valid: Row[] = [];
   rows.forEach((raw, index) => {
-    const fila = index + 2; const r = Object.fromEntries(Object.entries(raw).map(([name, value]) => [headerKey(name), cleanCell(value)]));
+    const fila = filas?.[index] ?? index + 2; const r = Object.fromEntries(Object.entries(raw).map(([name, value]) => [headerKey(name), cleanCell(value)]));
     const codigo = r.codigo_prenda ?? "";
     const fail = (message: string) => issues.push({ row: fila, code: codigo || "—", message, action: "error" });
     if (!codigo || codigo.length > 80 || !noControl(codigo)) return fail("codigo_prenda es obligatorio o demasiado largo.");
@@ -76,9 +98,10 @@ export function validatePrendasRows(rows: Record<string, string>[], clienteNombr
     const nombre = r.nombre_prenda ?? "", almacen = r.codigo_almacen ?? "";
     if (!nombre || nombre.length > 240 || !noControl(nombre)) return fail("nombre_prenda es obligatorio o demasiado largo.");
     if (!almacen || almacen.length > 80 || !noControl(almacen)) return fail("codigo_almacen es obligatorio o demasiado largo.");
-    if (!/^\d+(\.\d{1,2})?$/.test(r.precio ?? "")) return fail(`Precio inválido "${r.precio ?? ""}": usa un número con hasta dos decimales.`);
+    const precio = parsePrecio(r.precio);
+    if (precio === null) return fail(`Precio inválido "${r.precio ?? ""}": usa un número con hasta dos decimales (también se acepta S/ 1,250.50).`);
     if (!/^[1-9]\d{0,4}$/.test(r.cantidad ?? "") || Number(r.cantidad) > 10000) return fail(`Cantidad inválida "${r.cantidad ?? ""}": usa un entero entre 1 y 10000.`);
-    valid.push({ fila, codigo_prenda: codigo, nombre_prenda: nombre, codigo_almacen: almacen, precio: Number(r.precio), cantidad: Number(r.cantidad), genero, renovacion, activo });
+    valid.push({ fila, codigo_prenda: codigo, nombre_prenda: nombre, codigo_almacen: almacen, precio, cantidad: Number(r.cantidad), genero, renovacion, activo });
   });
   return { valid, issues };
 }
@@ -98,7 +121,8 @@ export function checkPrendasFile(valid: Row[]) {
     if (byRenovacion.has("AMBOS") && byRenovacion.size > 1) {
       for (const row of rows) if (!bad.has(row.fila)) flag(row, `${code} combina AMBOS con VERANO o INVIERNO (filas ${rows.map(s => s.fila).join(", ")}). Usa AMBOS solo, o una fila por renovación.`);
     }
-    for (const [campo, label] of [["precio", "precio"], ["nombre_prenda", "nombre"], ["codigo_almacen", "código de almacén"], ["genero", "género"]] as const) {
+    // Datos de ficha (el género NO: va en la asignación de cada cliente y puede variar por renovación).
+    for (const [campo, label] of [["precio", "precio"], ["nombre_prenda", "nombre"], ["codigo_almacen", "código de almacén"]] as const) {
       const values = new Map<string, number[]>();
       for (const row of rows) values.set(String(row[campo]), [...(values.get(String(row[campo])) ?? []), row.fila]);
       if (values.size > 1) {
@@ -110,7 +134,7 @@ export function checkPrendasFile(valid: Row[]) {
   return { ok: valid.filter(row => !bad.has(row.fila)), issues };
 }
 
-const emptyPreview = (cliente: string): PrendasPreview => ({ aplicado: false, cliente, prendas_nuevas: 0, asignaciones_nuevas: 0, cantidades_actualizadas: 0, estados_actualizados: 0, sin_cambios: 0, alertas: [], conflictos: [], desactivar: [], fichas_inactivas: [] });
+const emptyPreview = (cliente: string): PrendasPreview => ({ aplicado: false, cliente, prendas_nuevas: 0, asignaciones_nuevas: 0, cantidades_actualizadas: 0, generos_actualizados: 0, estados_actualizados: 0, sin_cambios: 0, alertas: [], renovaciones_actualizadas: [], desactivar: [], fichas_inactivas: [], cambios_ficha: [] });
 
 export async function preparePrendasImport(db: SupabaseClient, input: unknown) {
   const parsed = prendasPayloadSchema.parse(input);
@@ -118,13 +142,11 @@ export async function preparePrendasImport(db: SupabaseClient, input: unknown) {
   const { data: client, error: clientError } = await db.from("clientes").select("nombre,activo").eq("id", parsed.cliente_id).maybeSingle();
   if (clientError) throw new Error("No se pudo validar el cliente.");
   if (!client || client.activo === false) throw new z.ZodError([{ code: "custom", path: ["cliente_id"], message: "El cliente no existe o está inactivo." }]);
-  const { valid, issues } = validatePrendasRows(parsed.rows, String(client.nombre));
+  const { valid, issues } = validatePrendasRows(parsed.rows, String(client.nombre), parsed.filas);
   const file = checkPrendasFile(valid);
   const all = [...issues, ...file.issues].sort((a, b) => a.row - b.row);
   const finish = (prendas: PrendasPreview): PrendasImportPreview => {
-    const conflicts: ImportIssue[] = prendas.conflictos.map(c => ({ row: c.fila, code: c.codigo, action: "error",
-      message: `${c.renovacion} choca con la asignación ${c.otras.join(" y ")} ya vigente para este cliente (AMBOS no convive con VERANO o INVIERNO).` }));
-    const allIssues = [...all, ...conflicts].sort((a, b) => a.row - b.row);
+    const allIssues = all;
     return { rows: file.ok, issues: allIssues, nuevos: prendas.asignaciones_nuevas, actualizados: prendas.cantidades_actualizadas + prendas.estados_actualizados,
       omitidos: 0, errores: allIssues.length, prendas };
   };
@@ -136,6 +158,7 @@ export async function preparePrendasImport(db: SupabaseClient, input: unknown) {
     p_actualizar: parsed.actualizar, p_reemplazar: parsed.reemplazar,
   });
   if (error) {
+    if (error.code === "42501") throw new ImportInputError("Solo un superadmin puede aplicar el cambio de precio a todos los requerimientos.");
     if (["22023", "55000", "23505", "23P01"].includes(error.code)) throw new ImportInputError(error.message);
     throw new Error("No se pudo procesar la importación.");
   }

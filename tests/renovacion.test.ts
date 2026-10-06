@@ -95,7 +95,7 @@ test("importación sin la columna renovacion se rechaza por encabezados", async 
 
 // --- Renovación en el catálogo (prendas y unidades) ------------------------------------------
 const garmentValues = { codigo_prenda: "G1", nombre_prenda: "Camisa", codigo_almacen: "A1", precio: 20, genero: "AMBOS" };
-const asignacion = { cliente_id: CLIENTE, cantidad: 1, activo: true };
+const asignacion = { cliente_id: CLIENTE, genero: "AMBOS", cantidad: 1, activo: true };
 test("Mantenimiento → Prendas: la renovación va en cada asignación (VERANO, INVIERNO o AMBOS)", () => {
   for (const renovacion of ["VERANO", "INVIERNO", "AMBOS"]) assert.ok(catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...asignacion, renovacion }] } }).success);
   assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [asignacion] } }).success);
@@ -120,7 +120,7 @@ test("el formulario preselecciona la renovación por defecto de la unidad elegid
 });
 
 // --- Requerimiento: renovación obligatoria, filtros y detalle ---------------------------------
-const base = { agente_id: "22000000-0000-4000-8000-000000000001", cliente_id: "55000000-0000-4000-8000-000000000001", unidad_id: "66000000-0000-4000-8000-000000000001", detalles: [{ prenda_id: garments[0].id }] };
+const base = { genero: "HOMBRE", agente_id: "22000000-0000-4000-8000-000000000001", cliente_id: "55000000-0000-4000-8000-000000000001", unidad_id: "66000000-0000-4000-8000-000000000001", detalles: [{ prenda_id: garments[0].id }] };
 test("crear requerimiento exige el tipo de renovación (Verano o Invierno)", () => {
   assert.ok(requerimientoSchema.safeParse({ ...base, renovacion: "INVIERNO" }).success);
   assert.ok(!requerimientoSchema.safeParse(base).success);

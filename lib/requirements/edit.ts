@@ -17,6 +17,8 @@ export function canEditRequirement(profile: Profile | null, row: Pick<Requerimie
 }
 export const editGarmentsSchema = z.object({
   version: z.string().regex(/^[a-f0-9]{32}$/),
+  // Género elegido en pantalla: las prendas NUEVAS se validan contra el género de su asignación al cliente.
+  genero: z.enum(["HOMBRE", "MUJER"]).optional(),
   detalles: z.array(z.object({ prenda_id: z.string().uuid(), detalle_id: z.string().uuid().optional() }).strict())
     .min(1, "Debe existir al menos una prenda.").max(500)
     .refine(rows => new Set(rows.map(r => r.prenda_id)).size === rows.length, "No se permiten prendas duplicadas."),

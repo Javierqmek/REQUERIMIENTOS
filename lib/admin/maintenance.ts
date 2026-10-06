@@ -51,11 +51,13 @@ const garmentValues = z.object({
   codigo_prenda: shortText(80, "El código"), nombre_prenda: shortText(240, "El nombre"),
   codigo_almacen: shortText(80, "El código de almacén"),
   precio: z.number().finite().min(0).max(9999999999.99).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8, "Usa como máximo dos decimales."),
-  genero: z.enum(["HOMBRE", "MUJER", "AMBOS"]),
-  // Asignaciones de la prenda: cliente, renovación, cantidad y estado. No se borran: se desactivan.
+  // Alcance del cambio de precio o de código de almacén sobre requerimientos existentes (ver 202610070001).
+  alcance: z.enum(["ahora", "tramite", "todos"]).optional(),
+  // Asignaciones de la prenda: cliente, renovación, género, cantidad y estado. No se borran: se desactivan.
   asignaciones: z.array(z.object({
     id: z.string().uuid().optional(), cliente_id: z.string().uuid("Selecciona un cliente válido."),
     renovacion: z.enum(PRENDA_RENOVACIONES, { error: "La renovación debe ser Verano, Invierno o Ambos." }),
+    genero: z.enum(["HOMBRE", "MUJER", "AMBOS"], { error: "El género de la asignación debe ser Hombre, Mujer o Ambos." }),
     cantidad: z.number().int("La cantidad debe ser un entero.").min(1, "La cantidad mínima es 1.").max(10000),
     activo: z.boolean(),
   }).strict()).max(200).optional(),

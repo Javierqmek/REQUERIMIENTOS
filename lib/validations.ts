@@ -11,6 +11,7 @@ export const requerimientoSchema = z.object({
   cliente_id: z.string().uuid("Selecciona un cliente"),
   unidad_id: z.string().uuid("Selecciona una unidad"),
   renovacion: z.enum(RENOVACIONES, { error: "Selecciona el tipo de renovación" }),
+  genero: z.enum(["HOMBRE", "MUJER"], { error: "Selecciona Hombre o Mujer" }),
   detalles: z.array(z.object({
     prenda_id: z.string().uuid(),
   })).min(1, "Agrega al menos una prenda").superRefine((rows, ctx) => {

@@ -99,7 +99,7 @@ for (const role of ["coordinador", "admin"] as const) test(`API bloquea Atendido
 test("API admin edita ajeno con contrato sin cabecera", async () => {
   const h = mockHandler({ ...editProfile, role: "admin" }, "Observado", undefined, true);
   const response = await h.run(request(), fixtureEdit().requerimiento.id);
-  assert.equal(response.status, 200); assert.deepEqual(h.calls[1].args, { p_id: fixtureEdit().requerimiento.id, p_version: body().version, p_detalles: body().detalles });
+  assert.equal(response.status, 200); assert.deepEqual(h.calls[1].args, { p_id: fixtureEdit().requerimiento.id, p_version: body().version, p_detalles: body().detalles, p_genero: null });
   const payload=await response.json();assert.equal(payload.message, "Prendas actualizadas correctamente.");assert.equal(payload.data.requerimiento.id,fixtureEdit().requerimiento.id);
 });
 test("dos ediciones consecutivas conservan la misma cabecera y nunca llaman crear_requerimiento", async () => {

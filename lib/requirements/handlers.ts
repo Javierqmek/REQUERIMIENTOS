@@ -21,7 +21,7 @@ export function makeEditGarmentsHandler(deps: Dependencies) {
       const row = (loaded.data as EditPayload).requerimiento;
       if (!esAdminUniformes(profile.role) && row.usuario_creador_id !== profile.id) return json({ error: "No autorizado" }, 403);
       if (!canEditRequirement(profile, row)) return json({ error: ATTENDED_MESSAGE }, 409);
-      const result = await db.rpc("editar_prendas_requerimiento", { p_id: id, p_version: input.version, p_detalles: input.detalles });
+      const result = await db.rpc("editar_prendas_requerimiento", { p_id: id, p_version: input.version, p_detalles: input.detalles, p_genero: input.genero ?? null });
       if (result.error) {
         const code = result.error.code;
         if (code === "42501") return json({ error: "No autorizado" }, 403);

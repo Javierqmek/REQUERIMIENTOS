@@ -61,7 +61,7 @@ export function EditRequirement({ initial, profile }: { initial: EditPayload; pr
     savingRef.current = true; setSaving(true); setError("");
     try {
       const response = await fetch(`/api/requerimientos/${row.id}/prendas`, { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ version: initial.version, detalles: lines.map(l => ({ prenda_id: l.prenda_id, ...(l.detalle_id ? { detalle_id: l.detalle_id } : {}) })) }) });
+        body: JSON.stringify({ version: initial.version, ...(gender ? { genero: gender } : {}), detalles: lines.map(l => ({ prenda_id: l.prenda_id, ...(l.detalle_id ? { detalle_id: l.detalle_id } : {}) })) }) });
       if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("Tu sesión pudo haber caducado. Vuelve a iniciar sesión antes de guardar.");
       const result = await response.json();
       if (!response.ok) { if (response.status === 409) setConflict(true); throw new Error(result.error || "No pudimos guardar los cambios."); }

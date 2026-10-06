@@ -110,7 +110,7 @@ export default function NewRequirement() {
   async function save() {
     if (!agent || savingRef.current) return;
     const parsed = requerimientoSchema.safeParse({
-      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, renovacion: renovacion ?? undefined,
+      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, renovacion: renovacion ?? undefined, genero: gender ?? undefined,
       detalles: lines.map(p => ({ prenda_id: p.id })),
     });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
@@ -122,6 +122,7 @@ export default function NewRequirement() {
         p_cliente_id: parsed.data.cliente_id,
         p_unidad_id: parsed.data.unidad_id,
         p_renovacion: parsed.data.renovacion,
+        p_genero: parsed.data.genero,
         p_detalles: parsed.data.detalles,
         p_request_id: requestId,
       });
