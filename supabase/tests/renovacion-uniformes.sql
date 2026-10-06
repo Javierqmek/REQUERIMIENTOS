@@ -32,47 +32,47 @@ insert into public.unidades(id,cliente_id,nombre,activo) values ('c3000000-0000-
 insert into public.unidades(id,cliente_id,nombre,renovacion_defecto,activo) values ('c3000000-0000-4000-8000-000000000002','c2000000-0000-4000-8000-000000000001','REN UNIDAD INVIERNO','INVIERNO',true);
 insert into public.personal(id,codigo_personal,nombre,dni,cargo,activo) values ('c4000000-0000-4000-8000-000000000001','REN-1','REN TRABAJADOR','44444444','AGENTE',true);
 -- Sin renovación explícita: debe quedar AMBOS (migración: las prendas existentes quedan AMBOS).
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero,activo) values
- ('c5000000-0000-4000-8000-000000000001','REN-A','PRENDA AMBOS','A',10,'AMBOS',true),
- ('c5000000-0000-4000-8000-000000000004','REN-A2','PRENDA AMBOS 2','A2',12,'AMBOS',true);
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-A';
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-A2';
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero,activo) values
- ('c5000000-0000-4000-8000-000000000002','REN-V','PRENDA VERANO','V',20,'AMBOS',true),
- ('c5000000-0000-4000-8000-000000000003','REN-I','PRENDA INVIERNO','I',30,'AMBOS',true);
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'VERANO',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-V';
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'INVIERNO',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-I';
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,activo) values
+ ('c5000000-0000-4000-8000-000000000001','REN-A','PRENDA AMBOS','A',10,true),
+ ('c5000000-0000-4000-8000-000000000004','REN-A2','PRENDA AMBOS 2','A2',12,true);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'AMBOS','AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-A';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'AMBOS','AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-A2';
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,activo) values
+ ('c5000000-0000-4000-8000-000000000002','REN-V','PRENDA VERANO','V',20,true),
+ ('c5000000-0000-4000-8000-000000000003','REN-I','PRENDA INVIERNO','I',30,true);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'VERANO','AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-V';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'INVIERNO','AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-I';
 
 select pg_temp.ok((select renovacion from public.prenda_clientes a join public.prendas p on p.id=a.prenda_id where p.codigo_prenda='REN-A')='AMBOS','asignación AMBOS conservada');
 select pg_temp.ok((select renovacion_defecto from public.unidades where id='c3000000-0000-4000-8000-000000000001')='VERANO','unidad sin valor explícito: renovación por defecto VERANO');
 select pg_temp.ok((select renovacion_defecto from public.unidades where id='c3000000-0000-4000-8000-000000000002')='INVIERNO','unidad configurada con INVIERNO la conserva');
-select pg_temp.denied($$insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad) values('c5000000-0000-4000-8000-000000000002','c2000000-0000-4000-8000-000000000001','OTOÑO',1)$$,'23514','la asignación solo admite VERANO/INVIERNO/AMBOS');
+select pg_temp.denied($$insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad) values('c5000000-0000-4000-8000-000000000002','c2000000-0000-4000-8000-000000000001','OTOÑO','AMBOS',1)$$,'23514','la asignación solo admite VERANO/INVIERNO/AMBOS');
 select pg_temp.denied($$update public.unidades set renovacion_defecto='AMBOS' where id='c3000000-0000-4000-8000-000000000001'$$,'23514','unidades.renovacion_defecto no admite AMBOS');
 
 \echo '--- coordinador: crear requerimiento ---'
 set local role authenticated;
 select set_config('request.jwt.claim.sub','c1000000-0000-4000-8000-000000000001',true);
 select set_config('qa.verano',public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO',
-  '[{"prenda_id":"c5000000-0000-4000-8000-000000000002"},{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid())::text,true);
+  '[{"prenda_id":"c5000000-0000-4000-8000-000000000002"},{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid(),'HOMBRE')::text,true);
 select pg_temp.ok((select renovacion='VERANO' and referencia_interna='RENOVACION VERANO' from public.requerimientos where id=current_setting('qa.verano')::uuid),'requerimiento VERANO: guarda renovación y referencia');
 select set_config('qa.invierno',public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000002','INVIERNO',
-  '[{"prenda_id":"c5000000-0000-4000-8000-000000000003"},{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid())::text,true);
+  '[{"prenda_id":"c5000000-0000-4000-8000-000000000003"},{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid(),'HOMBRE')::text,true);
 select pg_temp.ok((select renovacion='INVIERNO' and referencia_interna='RENOVACION INVIERNO' from public.requerimientos where id=current_setting('qa.invierno')::uuid),'requerimiento INVIERNO: guarda renovación y referencia');
 select pg_temp.ok((select count(*)=2 from public.requerimientos where agente_id='c4000000-0000-4000-8000-000000000001'),'un trabajador puede tener más de un requerimiento');
 select pg_temp.ok((select count(*)=1 from public.detalle_requerimiento d where d.requerimiento_id=current_setting('qa.verano')::uuid and d.prenda_id='c5000000-0000-4000-8000-000000000001')
   and (select count(*)=1 from public.detalle_requerimiento d where d.requerimiento_id=current_setting('qa.invierno')::uuid and d.prenda_id='c5000000-0000-4000-8000-000000000001'),
   'la misma prenda sí puede estar en otro requerimiento del mismo trabajador');
-select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000003"}]',gen_random_uuid())$$,'22023','VERANO con una prenda INVIERNO');
-select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','INVIERNO','[{"prenda_id":"c5000000-0000-4000-8000-000000000002"}]',gen_random_uuid())$$,'22023','INVIERNO con una prenda VERANO');
-select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001',null,'[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$$,'22023','renovación nula');
-select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','AMBOS','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$$,'22023','el requerimiento no puede ser AMBOS');
-select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','OTOÑO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$$,'22023','renovación desconocida');
-select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"},{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid())$$,'22023','prenda repetida dentro del mismo requerimiento (servidor)');
+select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000003"}]',gen_random_uuid(),'HOMBRE')$$,'22023','VERANO con una prenda INVIERNO');
+select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','INVIERNO','[{"prenda_id":"c5000000-0000-4000-8000-000000000002"}]',gen_random_uuid(),'HOMBRE')$$,'22023','INVIERNO con una prenda VERANO');
+select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001',null,'[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid(),'HOMBRE')$$,'22023','renovación nula');
+select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','AMBOS','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid(),'HOMBRE')$$,'22023','el requerimiento no puede ser AMBOS');
+select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','OTOÑO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid(),'HOMBRE')$$,'22023','renovación desconocida');
+select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"},{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]',gen_random_uuid(),'HOMBRE')$$,'22023','prenda repetida dentro del mismo requerimiento (servidor)');
 select pg_temp.denied($$select public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','{"prenda_id":"c5000000-0000-4000-8000-000000000001"}'::text::jsonb,gen_random_uuid())$$,'42883','la firma anterior sin renovación ya no existe');
 select pg_temp.ok((select count(*)=2 from public.requerimientos),'los rechazos no dejan cabeceras parciales');
 -- idempotencia por request_id se conserva
-select pg_temp.ok(public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]','c9000000-0000-4000-8000-000000000001')
-  = public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]','c9000000-0000-4000-8000-000000000001'),'mismo request_id devuelve el mismo requerimiento');
+select pg_temp.ok(public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]','c9000000-0000-4000-8000-000000000001','HOMBRE')
+  = public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000001"}]','c9000000-0000-4000-8000-000000000001','HOMBRE'),'mismo request_id devuelve el mismo requerimiento');
 reset role;
 
 \echo '--- restricción única (requerimiento, prenda) en la base ---'
@@ -99,7 +99,7 @@ reset role;
 \echo '--- superadmin puede crear y editar requerimientos ---'
 set local role authenticated;
 select set_config('request.jwt.claim.sub','c1000000-0000-4000-8000-000000000003',true);
-select set_config('qa.sup',public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000002"}]',gen_random_uuid())::text,true);
+select set_config('qa.sup',public.crear_requerimiento('c4000000-0000-4000-8000-000000000001','c2000000-0000-4000-8000-000000000001','c3000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"c5000000-0000-4000-8000-000000000002"}]',gen_random_uuid(),'HOMBRE')::text,true);
 select pg_temp.ok((select usuario_creador_id='c1000000-0000-4000-8000-000000000003' from public.requerimientos where id=current_setting('qa.sup')::uuid),'superadmin crea requerimientos');
 select pg_temp.ok((public.obtener_edicion_prendas(current_setting('qa.sup')::uuid)->>'version') is not null,'superadmin abre la edición de prendas');
 select public.editar_prendas_requerimiento(current_setting('qa.sup')::uuid,(public.obtener_edicion_prendas(current_setting('qa.sup')::uuid)->>'version'),

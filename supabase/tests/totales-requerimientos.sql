@@ -19,11 +19,11 @@ insert into public.personal(id,codigo_personal,nombre,dni,cargo) values
 insert into public.clientes(id,nombre) values ('56000000-0000-4000-8000-000000000001','Cliente total');
 insert into public.unidades(id,cliente_id,nombre) values
  ('66000000-0000-4000-8000-000000000001','56000000-0000-4000-8000-000000000001','Unidad total');
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero) values
- ('36000000-0000-4000-8000-000000000001','TOT-A','Prenda A','A',999,'AMBOS'),
- ('36000000-0000-4000-8000-000000000002','TOT-B','Prenda B','B',999,'AMBOS');
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='Cliente total' where p.codigo_prenda='TOT-A';
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='Cliente total' where p.codigo_prenda='TOT-B';
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio) values
+ ('36000000-0000-4000-8000-000000000001','TOT-A','Prenda A','A',999),
+ ('36000000-0000-4000-8000-000000000002','TOT-B','Prenda B','B',999);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'AMBOS','AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='Cliente total' where p.codigo_prenda='TOT-A';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'AMBOS','AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='Cliente total' where p.codigo_prenda='TOT-B';
 insert into public.requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id) values
  ('46000000-0000-4000-8000-000000000001','26000000-0000-4000-8000-000000000001','16000000-0000-4000-8000-000000000001','56000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001'),
  ('46000000-0000-4000-8000-000000000002','26000000-0000-4000-8000-000000000002','16000000-0000-4000-8000-000000000002','56000000-0000-4000-8000-000000000001','66000000-0000-4000-8000-000000000001');

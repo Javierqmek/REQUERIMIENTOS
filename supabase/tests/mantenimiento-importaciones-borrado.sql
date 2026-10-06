@@ -11,9 +11,9 @@ insert into public.personal(id,codigo_personal,nombre,dni,cargo) values
  ('27000000-0000-4000-8000-000000000001','M-P1','Agente prueba','12345678','Agente');
 insert into public.clientes(id,nombre) values ('57000000-0000-4000-8000-000000000001','Cliente mantenimiento');
 insert into public.unidades(id,cliente_id,nombre) values ('67000000-0000-4000-8000-000000000001','57000000-0000-4000-8000-000000000001','Unidad mantenimiento');
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero) values
- ('37000000-0000-4000-8000-000000000001','M-G1','Prenda prueba','ALM-1',20,'AMBOS');
-insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='Cliente mantenimiento' where p.codigo_prenda='M-G1';
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio) values
+ ('37000000-0000-4000-8000-000000000001','M-G1','Prenda prueba','ALM-1',20);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,genero,cantidad,activo) select p.id,c.id,'AMBOS','AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='Cliente mantenimiento' where p.codigo_prenda='M-G1';
 insert into public.requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id,estado) values
  ('47000000-0000-4000-8000-000000000001','27000000-0000-4000-8000-000000000001','17000000-0000-4000-8000-000000000002','57000000-0000-4000-8000-000000000001','67000000-0000-4000-8000-000000000001','Pendiente'),
  ('47000000-0000-4000-8000-000000000002','27000000-0000-4000-8000-000000000001','17000000-0000-4000-8000-000000000002','57000000-0000-4000-8000-000000000001','67000000-0000-4000-8000-000000000001','Observado'),
