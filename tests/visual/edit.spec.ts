@@ -34,7 +34,7 @@ test("retirar/reagregar usa maestro y guarda solo IDs una vez", async ({ page })
   await expect(page.getByRole("button", { name: "Guardando cambios...", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Cancelar", exact: true })).toBeDisabled();
   await expect(page.getByText("Prendas actualizadas correctamente.", { exact: true })).toBeVisible();
-  expect(saves).toBe(1); expect(submitted).toEqual({ version: fixtureEdit().version, detalles: [{ prenda_id: editGarments[0].id }] });
+  expect(saves).toBe(1); expect(submitted).toEqual({ version: fixtureEdit().version, genero: "HOMBRE", detalles: [{ prenda_id: editGarments[0].id }] });
 });
 test("agregar conserva identidad y snapshots de la línea existente", async ({ page }) => {
   await page.goto(path + "?estado=Observado&role=admin");

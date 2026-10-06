@@ -39,7 +39,7 @@ const initialCatalogRows = {
   clientes: options.clientes.map((row,index)=>({...row,activo:index===0})),
   unidades: options.unidades.map((row,index)=>({...row,renovacion_defecto:"VERANO",clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
-  prendas: editGarments.map((row,index)=>({id:row.id,codigo_prenda:row.codigo_prenda,nombre_prenda:row.nombre_prenda,codigo_almacen:row.codigo_almacen,precio:row.precio,genero:row.genero,activo:index!==1,asignaciones:[{id:"a"+row.id.slice(1),cliente_id:IDS.cliente,cliente:"RENIEC",renovacion:row.renovacion,cantidad:row.cantidad,activo:true}]})),
+  prendas: editGarments.map((row,index)=>({id:row.id,codigo_prenda:row.codigo_prenda,nombre_prenda:row.nombre_prenda,codigo_almacen:row.codigo_almacen,precio:row.precio,activo:index!==1,asignaciones:[{id:"a"+row.id.slice(1),cliente_id:IDS.cliente,cliente:"RENIEC",renovacion:row.renovacion,genero:row.genero,cantidad:row.cantidad,activo:true}]})),
   provincias: [{id:"aa100000-0000-4000-8000-000000000001",nombre:"Lima",activo:true},{id:"aa100000-0000-4000-8000-000000000002",nombre:"Arequipa",activo:true}],
 };
 const recordsByProject=new Map<string,typeof initialRecords>();
@@ -145,13 +145,17 @@ async function main() {
         for(const id of ids){const index=records.findIndex(row=>row.id===id);if(index>=0)records.splice(index,1)}
         await delay(300); sendJson({eliminados:ids.length}); return;
       }
+      if (url.pathname === "/api/admin/prendas/impacto" && req.method === "POST") {
+        let body=""; for await(const chunk of req) body+=chunk.toString(); const input=JSON.parse(body);
+        await delay(120); sendJson({precio_cambia:input.precio!==99,almacen_cambia:false,tramite:{requerimientos:2,lineas:3},todos:{requerimientos:3,lineas:4}}); return;
+      }
       if (url.pathname === "/api/admin/importaciones" && req.method === "POST") {
         let body=""; for await(const chunk of req) body+=chunk.toString(); const input=JSON.parse(body);
         if(input.kind==="prendas"){
           await delay(250);
           const replace=input.reemplazar===true;
           const prendas={aplicado:input.mode==="apply",cliente:"RENIEC",prendas_nuevas:1,asignaciones_nuevas:2,cantidades_actualizadas:1,estados_actualizados:0,sin_cambios:3,
-            alertas:[{codigo:"CAM001",nombre:"CAMISA",cambios:[{campo:"precio",actual:"40.00",archivo:"45.00"}]}],conflictos:[],
+            generos_actualizados:1,alertas:[{codigo:"CAM001",nombre:"CAMISA",cambios:[{campo:"precio",actual:"40.00",archivo:"45.00"}],impacto:{precio_cambia:true,almacen_cambia:false,tramite:{requerimientos:2,lineas:3},todos:{requerimientos:3,lineas:4}}},{codigo:"COR001",nombre:"CORBATA",cambios:[{campo:"nombre_prenda",actual:"CORBATA",archivo:"CORBATA GUINDA"}],impacto:{precio_cambia:false,almacen_cambia:false,tramite:{requerimientos:0,lineas:0},todos:{requerimientos:0,lineas:0}}}],renovaciones_actualizadas:[{codigo:"MED001",nombre:"MEDIAS",de:"AMBOS",a:"VERANO"}],cambios_ficha:[],
             desactivar:replace?[{codigo:"OLD001",nombre:"ANTIGUA",renovacion:"VERANO",cantidad:2},{codigo:"OLD002",nombre:"OTRA",renovacion:"AMBOS",cantidad:1}]:[],fichas_inactivas:[]};
           const issues=input.rows.length>3?[{row:5,code:"ACS0206",message:"ACS0206 con renovación VERANO está repetido en las filas 5 y 9. Deja una sola fila por código y renovación.",action:"error"}]:[];
           sendJson({rows:input.rows,issues,nuevos:2,actualizados:1,omitidos:0,errores:issues.length,prendas}); return;
@@ -171,7 +175,7 @@ async function main() {
           if(!row){row={id:catalogId(),activo:true};rows.push(row);}
           Object.assign(row,values);
           if(kind==="unidades"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.clientes={nombre:selected?.nombre??"Cliente nuevo"};}
-          if(kind==="prendas"){row.asignaciones=((values.asignaciones??row.asignaciones??[]) as {id?:string;cliente_id:string;renovacion:string;cantidad:number;activo:boolean}[]).map(item=>({id:item.id??catalogId(),cliente_id:item.cliente_id,cliente:options.clientes.find(client=>client.id===item.cliente_id)?.nombre??"Cliente nuevo",renovacion:item.renovacion,cantidad:item.cantidad,activo:item.activo}));}
+          if(kind==="prendas"){row.asignaciones=((values.asignaciones??row.asignaciones??[]) as {id?:string;cliente_id:string;renovacion:string;genero:string;cantidad:number;activo:boolean}[]).map(item=>({id:item.id??catalogId(),cliente_id:item.cliente_id,cliente:options.clientes.find(client=>client.id===item.cliente_id)?.nombre??"Cliente nuevo",renovacion:item.renovacion,genero:item.genero,cantidad:item.cantidad,activo:item.activo}));}
           sendJson({accion:req.method==="POST"?"crear":"editar",row},req.method==="POST"?201:200);return;
         }
         const kind=(url.searchParams.get("catalogo")||"clientes") as keyof typeof catalogRows;
@@ -179,7 +183,7 @@ async function main() {
         if(q)rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
         if(client&&kind==="unidades")rows=rows.filter(row=>row.cliente_id===client);
         if(client&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {cliente_id:string}[]).some(item=>item.cliente_id===client));
-        const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>row.genero===gender);
+        const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {genero:string}[]).some(item=>item.genero===gender));
         if(kind==="clientes"||kind==="unidades")rows=rows.map(row=>({...row,puede_eliminar:!["RENIEC","CLIENTE CON NOMBRE CORPORATIVO EXTENSO","OFICINA REGISTRAL ATE","SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA"].includes(String(row.nombre)),...(kind==="unidades"?{puede_cambiar_cliente:!String(row.nombre).includes("OFICINA")}: {})}));
         await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;
       }

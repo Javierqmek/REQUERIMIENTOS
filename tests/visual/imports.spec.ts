@@ -20,7 +20,7 @@ async function loadPrendas(page:import("@playwright/test").Page,rows:string[],en
 
 test("Prendas: archivo de un cliente en Windows-1252 conserva tildes y muestra la alerta de precio",async({page})=>{
   const body=await loadPrendas(page,["CAM001,Camisa Ñandú áéíóú,UNF1 ,45,4,Hombre,Verano,sí","COR001,Corbata,UNF2,15,10,Ambos,AMBOS,sí"]);
-  expect(body).toMatchObject({kind:"prendas",cliente_id:RENIEC_ID,mode:"preview",reemplazar:false,actualizar:[]});
+  expect(body).toMatchObject({kind:"prendas",cliente_id:RENIEC_ID,mode:"preview",reemplazar:false,actualizar:{}});
   expect(body.rows[0].nombre_prenda).toBe("Camisa Ñandú áéíóú");
   expect(body.headers).toContain("renovación");
   await expect(page.getByRole("heading",{name:/Vista previa · RENIEC/})).toBeVisible();
@@ -40,14 +40,14 @@ test("Prendas: Mantener actual por defecto; Actualizar se envía solo para el c�
   await page.getByRole("button",{name:"Confirmar importación"}).click();
   let request=page.waitForRequest(r=>r.url().endsWith("/api/admin/importaciones"));
   await page.getByRole("dialog").getByRole("button",{name:"Sí, importar"}).click();
-  expect((await request).postDataJSON()).toMatchObject({mode:"apply",actualizar:[],reemplazar:false});
+  expect((await request).postDataJSON()).toMatchObject({mode:"apply",actualizar:{},reemplazar:false});
   await expect(page.getByText(/Importación completada: 2 asignaciones nuevas, 1 actualizadas/)).toBeVisible();
   await loadPrendas(page,["CAM001,Camisa,UNF1,45,4,Hombre,Verano,sí"]);
-  await page.getByLabel("Qué hacer con CAM001").selectOption("actualizar");
+  await page.getByLabel("Qué hacer con CAM001").selectOption("ahora");
   await page.getByRole("button",{name:"Confirmar importación"}).click();
   request=page.waitForRequest(r=>r.url().endsWith("/api/admin/importaciones"));
   await page.getByRole("dialog").getByRole("button",{name:"Sí, importar"}).click();
-  expect((await request).postDataJSON()).toMatchObject({mode:"apply",actualizar:["CAM001"]});
+  expect((await request).postDataJSON()).toMatchObject({mode:"apply",actualizar:{CAM001:"ahora"}});
 });
 
 test("Prendas: Reemplazar catálogo de este cliente muestra antes lo que se desactivaría",async({page})=>{
