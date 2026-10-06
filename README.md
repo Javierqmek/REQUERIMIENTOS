@@ -103,9 +103,9 @@ npm run build
 
 Prepara archivos CSV con encabezados equivalentes a las columnas de cada tabla. En Supabase abre **Table Editor** y usa **Insert > Import data from CSV**. Orden: clientes → unidades → personal → prendas.
 
-Para `clientes`: `nombre,activo`. Para `unidades`: `cliente_id,nombre,renovacion_defecto,activo` (usa los UUID generados en clientes; `renovacion_defecto` es VERANO o INVIERNO y vale VERANO si se omite). Para `personal`: `codigo_personal,nombre,dni,cargo,activo`. Para `prendas`: `codigo_prenda,nombre_prenda,genero,renovacion,codigo_almacen,precio,cantidad,cliente,activo`.
+Para `clientes`: `nombre,activo`. Para `unidades`: `cliente_id,nombre,renovacion_defecto,activo` (usa los UUID generados en clientes; `renovacion_defecto` es VERANO o INVIERNO y vale VERANO si se omite). Para `personal`: `codigo_personal,nombre,dni,cargo,activo`. Para `prendas`: `codigo_prenda,nombre_prenda,genero,codigo_almacen,precio,activo` (la ficha, una sola vez); su cliente, renovación y cantidad van en `prenda_clientes` (usa Mantenimiento → Prendas o Importaciones).
 
-No incluyas `id` ni `created_at`: Supabase los genera. `genero` admite HOMBRE, MUJER y AMBOS; HOMBRE/MUJER y UNISEX se normalizan como AMBOS. `renovacion` admite VERANO, INVIERNO y AMBOS (vale AMBOS si se omite). Conserva DNI y códigos como texto; en Excel conviene asignar formato **Texto** antes de guardar el CSV. El valor de `prendas.cliente` debe coincidir exactamente con `clientes.nombre`. La cantidad debe ser un entero positivo; si se omite vale 1. El agente no tiene destino asignado: cliente y unidad se eligen en cada requerimiento.
+No incluyas `id` ni `created_at`: Supabase los genera. `genero` admite HOMBRE, MUJER y AMBOS; HOMBRE/MUJER y UNISEX se normalizan como AMBOS.  Conserva DNI y códigos como texto; en Excel conviene asignar formato **Texto** antes de guardar el CSV. El valor de `prendas.cliente` debe coincidir exactamente con `clientes.nombre`. La cantidad debe ser un entero positivo; si se omite vale 1. El agente no tiene destino asignado: cliente y unidad se eligen en cada requerimiento.
 
 ## 8. Desplegar en Vercel
 
@@ -157,10 +157,26 @@ Consulta [clasificación e importación de prendas por género](docs/prendas-gen
 Aplica `202610020001_renovacion_prendas_unicas.sql` (una sola ejecución, después de `202609250002`). Las prendas existentes quedan como AMBOS y los requerimientos existentes como VERANO.
 
 - **Formulario**: antes de "Género" se elige el *Tipo de renovación* (obligatorio). Al elegir la unidad se preselecciona su "Renovación por defecto" (Mantenimiento → Unidades, Verano por defecto), pero el usuario puede cambiarla. Una prenda aparece si su renovación es la elegida o AMBOS y su género es el elegido o AMBOS. Si al cambiar renovación o género hay prendas que ya no corresponden, se avisa y se quitan.
-- **Mantenimiento → Prendas** edita `renovacion` (VERANO, INVIERNO, AMBOS); **Mantenimiento → Unidades** edita `renovacion_defecto`.
-- **Importación de prendas (CSV)**: columnas `codigo_prenda, nombre_prenda, codigo_almacen, precio, cantidad, cliente, genero, renovacion, activo`. `renovacion` (o `Renovación`) acepta Verano, Invierno o Ambos sin importar mayúsculas ni tildes; un valor inválido se informa con el número de fila. No hay plantilla Excel en el repositorio: el archivo de ejemplo es el CSV con esos encabezados.
+- **Mantenimiento → Unidades** edita `renovacion_defecto`. La renovación de una prenda va en sus asignaciones por cliente (ver la sección siguiente).
+- **Importación de prendas (CSV)**: ver la sección siguiente (se importa por cliente). `renovacion` (o `Renovación`) acepta Verano, Invierno o Ambos sin importar mayúsculas ni tildes; un valor inválido se informa con el número de fila.
 - **Detalle, listados, filtros y exportaciones** (CSV y Excel SIDIGE) muestran y filtran por renovación. La columna *Ref.Int.* de SIDIGE ahora es `RENOVACION VERANO` o `RENOVACION INVIERNO` según el requerimiento, y el archivo se llama `MIGRADOR_RENOVACION_<VERANO|INVIERNO|TODAS>_AAAAMMDD_HHmm.xlsx`.
 - **Una prenda una sola vez por requerimiento**: si se necesita más, se sube la cantidad (fija en el maestro). El mismo trabajador sí puede tener la misma prenda en otro requerimiento. En pantalla las ya agregadas salen en gris, tachadas, con la etiqueta "Ya agregada" y no se pueden elegir (al crear y al editar); en servidor lo valida la RPC (`22023`) y el índice único parcial `detalle_prenda_activa_unique` (requerimiento, prenda) entre líneas activas, vigente desde `202609020004`.
+
+## Prendas por cliente: ficha única + asignaciones (migración `202610060001`)
+
+Antes cada prenda tenía un solo cliente y la importación hacía upsert por `codigo_prenda`: importar INDECOPI movía a INDECOPI las prendas con códigos que ya eran de RENIEC. Ahora:
+
+- **Ficha** (`prendas`, una sola vez): código (único), nombre, código de almacén, género y precio. El precio es el mismo para todos los clientes.
+- **Asignación** (`prenda_clientes`): prenda + cliente + renovación (VERANO, INVIERNO o AMBOS) + cantidad + activo. Permitido: la misma prenda y cliente con una fila VERANO y otra INVIERNO de cantidades distintas (p. ej. bloqueador `ACS0206` de INDECOPI: Verano 6, Invierno 3). No permitido (restricción en base de datos): filas duplicadas (prenda, cliente, renovación) ni AMBOS activo junto con VERANO/INVIERNO para la misma prenda y cliente.
+- **Formulario y servidor**: solo se ofrecen las prendas asignadas al cliente del requerimiento cuya renovación coincida (o AMBOS) y cuyo género coincida, con la cantidad de esa asignación. `crear_requerimiento` y `editar_prendas_requerimiento` rechazan una prenda no asignada a ese cliente y renovación. Las líneas de requerimientos ya registrados no cambian (guardan prenda, cantidad y precio).
+- **Mantenimiento → Prendas**: la ficha muestra y edita sus asignaciones (cliente, renovación, cantidad, activo; no se borran, se desactivan) y tiene filtro por cliente.
+- **Importaciones → Prendas** (un archivo por cliente): columnas `codigo_prenda, nombre_prenda, codigo_almacen, precio, cantidad, genero, renovacion, activo` (en cualquier orden; `cliente` opcional, y si viene debe ser el elegido). CSV en UTF-8 o Windows-1252; se limpian los espacios (`"UNF1 "` → `UNF1`).
+  - Solo crea o modifica asignaciones de ese cliente; nunca las de otro.
+  - Si el código ya existe se reutiliza la ficha. Si precio, nombre, almacén o género del archivo difieren de lo guardado, **no se cambian**: la vista previa avisa ("Precio actual S/ 40.00, en el archivo S/ 45.00") y el usuario elige *Mantener actual* (por defecto) o *Actualizar* por prenda.
+  - Errores con número de fila: mismo código, cliente y renovación repetidos; mismo código con datos de ficha distintos (p. ej. dos precios) en el archivo; AMBOS mezclado con VERANO/INVIERNO; renovación, género, precio o cantidad inválidos.
+  - Vista previa antes de aplicar: prendas nuevas, asignaciones nuevas, cantidades actualizadas, alertas y errores. *Reemplazar catálogo de este cliente* desactiva (no borra) las asignaciones del cliente que no estén en el archivo y las lista antes; no se aplica si hay errores.
+  - Cada importación queda en `private.admin_catalog_audit` (acción `IMPORTAR`) con el estado anterior de lo tocado.
+- **Recuperar un cliente afectado**: la importación anterior no guardó historial. [`supabase/inspection/recuperar-prendas-cliente.sql`](supabase/inspection/recuperar-prendas-cliente.sql) (solo lectura) lista lo que se puede deducir de los requerimientos del cliente y propone, comentada, una restauración. Lo más simple es reimportar el archivo del cliente con el modelo nuevo. La migración guarda en `private.prendas_asignacion_respaldo` los valores anteriores (cliente, cantidad, renovación) de todas las prendas.
 
 Los totales visibles en creación, Mis requerimientos y Administración se documentan en [totales de requerimientos](docs/totales-requerimientos.md). En una instalación ya migrada aplica únicamente `202609100002_totales_requerimientos.sql`, después de la migración de género y antes de desplegar este frontend.
 

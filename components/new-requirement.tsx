@@ -11,6 +11,7 @@ import { RenovacionPicker } from "@/components/renovacion-picker";
 import { RequirementTotal } from "@/components/requirement-total";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useActiveCatalog } from "@/components/use-active-catalog";
+import { useClientGarments } from "@/components/use-client-garments";
 import { genderLabel, type GenderChoice } from "@/lib/garments/gender";
 import { garmentChoices, garmentFits as fits, renovacionLabel, type Renovacion } from "@/lib/garments/renovacion";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
@@ -41,8 +42,8 @@ export default function NewRequirement() {
   const client = clients.rows.find(c => c.id === clientId);
   const units = useActiveCatalog<Unidad>(supabase, "unidades", step === 2 && Boolean(client), { column: "cliente_id", value: clientId });
   const unit = units.rows.find(u => u.id === unitId);
-  const inFilters = useMemo(() => ({ genero: gender ? [gender, "AMBOS"] : [], renovacion: renovacion ? [renovacion, "AMBOS"] : [] }), [gender, renovacion]);
-  const garments = useActiveCatalog<Prenda>(supabase, "prendas", step === 2 && Boolean(client && unit && gender && renovacion), { column: "cliente", value: client?.nombre ?? "" }, inFilters);
+  // Solo prendas asignadas a ESTE cliente para esta renovación (o AMBOS), con la cantidad de su asignación.
+  const garments = useClientGarments(supabase, step === 2 && Boolean(client && unit && gender && renovacion), clientId, renovacion);
   const visibleGarments = garments.rows.filter(garment => gender && renovacion && fits(garment, renovacion, gender));
   const choices = garmentChoices(visibleGarments, lines.map(line => line.id));
   const chosen = garments.rows.find(g => g.id === selected);

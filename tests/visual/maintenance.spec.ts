@@ -45,11 +45,11 @@ test("formularios de unidad, personal y prenda son compactos y completos",async(
   await page.setViewportSize({width:320,height:700});await page.goto("/admin/mantenimiento");
   await page.getByRole("tab",{name:"Unidades"}).click();await page.getByRole("button",{name:"Nuevo"}).click();await expect(page.getByLabel("Nombre de unidad / sede")).toBeVisible();await page.getByLabel("Cerrar formulario").click();
   await page.getByRole("tab",{name:"Personal"}).click();await page.getByRole("button",{name:"Nuevo"}).click();await expect(page.getByLabel("Código de personal")).toBeVisible();await expect(page.getByLabel("DNI")).toBeVisible();await page.getByLabel("Cerrar formulario").click();
-  await page.getByRole("tab",{name:"Prendas"}).click();await page.getByRole("button",{name:"Nuevo"}).click();await expect(page.getByLabel("Precio unitario")).toBeVisible();await expect(page.getByLabel("Cantidad fija")).toBeVisible();
+  await page.getByRole("tab",{name:"Prendas"}).click();await page.getByRole("button",{name:"Nuevo"}).click();await expect(page.getByLabel("Precio unitario")).toBeVisible();await expect(page.getByTestId("asignaciones")).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-test("Unidades y Prendas muestran y guardan la renovación",async({page})=>{
+test("Unidades guardan la renovación por defecto",async({page})=>{
   await page.goto("/admin/mantenimiento");
   await page.getByRole("tab",{name:"Unidades"}).click();
   await expect(page.getByText("Renovación por defecto").first()).toBeVisible();
@@ -62,9 +62,39 @@ test("Unidades y Prendas muestran y guardan la renovación",async({page})=>{
   const request=page.waitForRequest(r=>r.url().endsWith("/api/admin/catalogos")&&r.method()==="POST");
   await page.getByRole("button",{name:"Crear registro"}).click();
   expect((await request).postDataJSON().valores).toMatchObject({nombre:"Sede de invierno",renovacion_defecto:"INVIERNO"});
+});
+
+test("Prendas: la ficha muestra y edita sus asignaciones por cliente y renovación",async({page})=>{
+  await page.goto("/admin/mantenimiento");
   await page.getByRole("tab",{name:"Prendas"}).click();
-  await expect(page.getByText("Renovación",{exact:true}).first()).toBeVisible();
-  await page.getByRole("button",{name:"Nuevo"}).click();
-  await expect(page.locator(`select[name="renovacion"]`)).toHaveValue("AMBOS");
-  await expect(page.locator(`select[name="renovacion"]`).locator("option")).toHaveText(["Verano","Invierno","Ambos"]);
+  const camisa=page.getByRole("article").filter({hasText:"CAMISA OPERATIVA MANGA LARGA"});
+  await expect(camisa.getByLabel("Asignaciones").getByText("RENIEC · Ambos · ×5")).toBeVisible();
+  await page.getByLabel("Filtrar por cliente").selectOption({label:"RENIEC"});
+  await expect(camisa).toBeVisible();
+  await page.getByLabel("Filtrar por cliente").selectOption({label:"CLIENTE CON NOMBRE CORPORATIVO EXTENSO"});
+  await expect(page.getByText("No hay registros con estos filtros.")).toBeVisible();
+  await page.getByLabel("Filtrar por cliente").selectOption("");
+  await page.getByLabel("Acciones de CAMISA OPERATIVA MANGA LARGA").click();
+  await page.getByRole("menuitem",{name:"Editar"}).click();
+  const dialog=page.getByRole("dialog");
+  const rows=dialog.getByTestId("asignaciones").getByRole("listitem");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first().getByLabel("Cliente de la asignación")).toBeDisabled();
+  await rows.first().getByLabel("Cantidad de la asignación").fill("7");
+  await dialog.getByRole("button",{name:"Agregar asignación"}).click();
+  await expect(rows).toHaveCount(2);
+  await rows.nth(1).getByLabel("Cliente de la asignación").selectOption({label:"CLIENTE CON NOMBRE CORPORATIVO EXTENSO"});
+  await rows.nth(1).getByLabel("Renovación de la asignación").selectOption("INVIERNO");
+  await rows.nth(1).getByLabel("Cantidad de la asignación").fill("3");
+  const request=page.waitForRequest(r=>r.url().endsWith("/api/admin/catalogos")&&r.method()==="PUT");
+  await dialog.getByRole("button",{name:"Guardar cambios"}).click();
+  const sent=(await request).postDataJSON().valores;
+  expect(sent.asignaciones).toHaveLength(2);
+  expect(sent.asignaciones[0]).toMatchObject({cantidad:7,renovacion:"AMBOS",activo:true});
+  expect(sent.asignaciones[0].id).toBeTruthy();
+  expect(sent.asignaciones[1]).toMatchObject({cliente_id:"55000000-0000-4000-8000-000000000002",renovacion:"INVIERNO",cantidad:3,activo:true});
+  expect(sent.asignaciones[1].id).toBeUndefined();
+  expect(sent).not.toHaveProperty("cantidad");expect(sent).not.toHaveProperty("cliente_id");
+  await expect(camisa.getByLabel("Asignaciones").getByText("RENIEC · Ambos · ×7")).toBeVisible();
+  await expect(camisa.getByLabel("Asignaciones").getByText("CLIENTE CON NOMBRE CORPORATIVO EXTENSO · Invierno · ×3")).toBeVisible();
 });

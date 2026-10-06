@@ -14,8 +14,9 @@ insert into public.clientes(id,nombre) values
  ('58000000-0000-4000-8000-000000000002','Cliente alterno');
 insert into public.unidades(id,cliente_id,nombre) values
  ('68000000-0000-4000-8000-000000000001','58000000-0000-4000-8000-000000000001','Unidad histórica');
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cantidad,cliente,genero) values
- ('38000000-0000-4000-8000-000000000001','CRUD-G0','Prenda histórica','HIST-1',20,2,'Cliente histórico','AMBOS');
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero) values
+ ('38000000-0000-4000-8000-000000000001','CRUD-G0','Prenda histórica','HIST-1',20,'AMBOS');
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='Cliente histórico' where p.codigo_prenda='CRUD-G0';
 insert into public.requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id) values
  ('48000000-0000-4000-8000-000000000001','28000000-0000-4000-8000-000000000001','18000000-0000-4000-8000-000000000002','58000000-0000-4000-8000-000000000001','68000000-0000-4000-8000-000000000001');
 insert into public.detalle_requerimiento(id,requerimiento_id,prenda_id,cantidad,precio_unitario,codigo_almacen)
@@ -72,16 +73,16 @@ select public.admin_actualizar_catalogo_activo('personal',(select id from public
 select public.admin_actualizar_catalogo_activo('personal',(select id from public.personal where codigo_personal='CRUD-P1'),true);
 select pg_temp.ok(exists(select 1 from public.personal where codigo_personal='CRUD-P1' and nombre='Persona Editada' and activo),'crea edita y cambia estado de personal');
 
-select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Nueva","codigo_almacen":"ALM-2","precio":35.50,"cantidad":3,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"HOMBRE","renovacion":"AMBOS"}');
-select public.admin_guardar_catalogo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Editada","codigo_almacen":"ALM-3","precio":40,"cantidad":4,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"AMBOS","renovacion":"AMBOS"}');
+select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Nueva","codigo_almacen":"ALM-2","precio":35.50,"genero":"HOMBRE","asignaciones":[{"cliente_id":"58000000-0000-4000-8000-000000000001","renovacion":"AMBOS","cantidad":3,"activo":true}]}');
+select public.admin_guardar_catalogo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Editada","codigo_almacen":"ALM-3","precio":40,"genero":"AMBOS"}');
 select public.admin_actualizar_catalogo_activo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),false);
 select public.admin_actualizar_catalogo_activo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),true);
 select pg_temp.ok(exists(select 1 from public.prendas where codigo_prenda='CRUD-G1' and nombre_prenda='Prenda Editada' and activo),'crea edita y cambia estado de prendas');
-select public.admin_guardar_catalogo('prendas','38000000-0000-4000-8000-000000000001','{"codigo_prenda":"CRUD-G0","nombre_prenda":"Maestro editado","codigo_almacen":"NUEVO","precio":99,"cantidad":5,"cliente_id":"58000000-0000-4000-8000-000000000001","genero":"AMBOS","renovacion":"AMBOS"}');
+select public.admin_guardar_catalogo('prendas','38000000-0000-4000-8000-000000000001','{"codigo_prenda":"CRUD-G0","nombre_prenda":"Maestro editado","codigo_almacen":"NUEVO","precio":99,"genero":"AMBOS"}');
 select public.admin_guardar_catalogo('clientes','58000000-0000-4000-8000-000000000001','{"nombre":"Cliente histórico editado"}');
 reset role;
 select pg_temp.ok((select cantidad=2 and precio_unitario=20 and codigo_almacen='HIST-1' from public.detalle_requerimiento where id='78000000-0000-4000-8000-000000000001') and exists(select 1 from public.requerimientos where id='48000000-0000-4000-8000-000000000001'),'edicion de maestro no altera historico');
-select pg_temp.ok((select count(*)=2 from public.prendas where codigo_prenda in ('CRUD-G0','CRUD-G1') and cliente='Cliente histórico editado'),'renombrar cliente sincroniza prendas sin cambiar UUID historicos');
+select pg_temp.ok((select count(*)=2 from public.prenda_clientes a join public.clientes c on c.id=a.cliente_id join public.prendas p on p.id=a.prenda_id where p.codigo_prenda in ('CRUD-G0','CRUD-G1') and c.nombre='Cliente histórico editado'),'renombrar cliente conserva las asignaciones (van por id) sin cambiar UUID historicos');
 select pg_temp.ok((select count(*)>=12 from private.admin_catalog_audit where usuario_id='18000000-0000-4000-8000-000000000001') and exists(select 1 from private.admin_catalog_audit where accion='ELIMINAR'),'auditoria registra admin acciones y valores');
 select pg_temp.ok((select bool_and(relrowsecurity) from pg_class where oid=any(array['public.personal'::regclass,'public.clientes'::regclass,'public.unidades'::regclass,'public.prendas'::regclass,'public.requerimientos'::regclass,'public.detalle_requerimiento'::regclass])),'RLS permanece habilitada');
 rollback;

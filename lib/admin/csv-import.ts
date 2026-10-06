@@ -1,3 +1,9 @@
+// Excel en Windows guarda CSV en Windows-1252 (ANSI) salvo que se elija UTF-8: se prueba UTF-8 estricto y, si no
+// es válido, se lee como Windows-1252 para no romper tildes ni la ñ.
+export function decodeCsvBytes(bytes:ArrayBuffer|Uint8Array){
+  const view=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
+  try{return new TextDecoder("utf-8",{fatal:true}).decode(view)}catch{return new TextDecoder("windows-1252").decode(view)}
+}
 export function parseCsv(text:string){
   if(text.length>1024*1024)throw new Error("El archivo supera 1 MB.");
   const matrix:string[][]=[];let row:string[]=[],field="",quoted=false;

@@ -32,17 +32,21 @@ insert into public.unidades(id,cliente_id,nombre,activo) values ('c3000000-0000-
 insert into public.unidades(id,cliente_id,nombre,renovacion_defecto,activo) values ('c3000000-0000-4000-8000-000000000002','c2000000-0000-4000-8000-000000000001','REN UNIDAD INVIERNO','INVIERNO',true);
 insert into public.personal(id,codigo_personal,nombre,dni,cargo,activo) values ('c4000000-0000-4000-8000-000000000001','REN-1','REN TRABAJADOR','44444444','AGENTE',true);
 -- Sin renovación explícita: debe quedar AMBOS (migración: las prendas existentes quedan AMBOS).
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cantidad,cliente,genero,activo) values
- ('c5000000-0000-4000-8000-000000000001','REN-A','PRENDA AMBOS','A',10,2,'REN CLIENTE','AMBOS',true),
- ('c5000000-0000-4000-8000-000000000004','REN-A2','PRENDA AMBOS 2','A2',12,1,'REN CLIENTE','AMBOS',true);
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cantidad,cliente,genero,renovacion,activo) values
- ('c5000000-0000-4000-8000-000000000002','REN-V','PRENDA VERANO','V',20,1,'REN CLIENTE','AMBOS','VERANO',true),
- ('c5000000-0000-4000-8000-000000000003','REN-I','PRENDA INVIERNO','I',30,1,'REN CLIENTE','AMBOS','INVIERNO',true);
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero,activo) values
+ ('c5000000-0000-4000-8000-000000000001','REN-A','PRENDA AMBOS','A',10,'AMBOS',true),
+ ('c5000000-0000-4000-8000-000000000004','REN-A2','PRENDA AMBOS 2','A2',12,'AMBOS',true);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-A';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-A2';
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero,activo) values
+ ('c5000000-0000-4000-8000-000000000002','REN-V','PRENDA VERANO','V',20,'AMBOS',true),
+ ('c5000000-0000-4000-8000-000000000003','REN-I','PRENDA INVIERNO','I',30,'AMBOS',true);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'VERANO',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-V';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'INVIERNO',1,true from public.prendas p join public.clientes c on c.nombre='REN CLIENTE' where p.codigo_prenda='REN-I';
 
-select pg_temp.ok((select renovacion from public.prendas where id='c5000000-0000-4000-8000-000000000001')='AMBOS','prenda sin renovación explícita queda AMBOS');
+select pg_temp.ok((select renovacion from public.prenda_clientes a join public.prendas p on p.id=a.prenda_id where p.codigo_prenda='REN-A')='AMBOS','asignación AMBOS conservada');
 select pg_temp.ok((select renovacion_defecto from public.unidades where id='c3000000-0000-4000-8000-000000000001')='VERANO','unidad sin valor explícito: renovación por defecto VERANO');
 select pg_temp.ok((select renovacion_defecto from public.unidades where id='c3000000-0000-4000-8000-000000000002')='INVIERNO','unidad configurada con INVIERNO la conserva');
-select pg_temp.denied($$insert into public.prendas(codigo_prenda,nombre_prenda,codigo_almacen,precio,cantidad,cliente,genero,renovacion) values('X','X','X',1,1,'REN CLIENTE','AMBOS','OTOÑO')$$,'23514','prendas.renovacion solo admite VERANO/INVIERNO/AMBOS');
+select pg_temp.denied($$insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad) values('c5000000-0000-4000-8000-000000000002','c2000000-0000-4000-8000-000000000001','OTOÑO',1)$$,'23514','la asignación solo admite VERANO/INVIERNO/AMBOS');
 select pg_temp.denied($$update public.unidades set renovacion_defecto='AMBOS' where id='c3000000-0000-4000-8000-000000000001'$$,'23514','unidades.renovacion_defecto no admite AMBOS');
 
 \echo '--- coordinador: crear requerimiento ---'
@@ -111,16 +115,7 @@ select pg_temp.ok((public.admin_guardar_catalogo('unidades',null,'{"cliente_id":
 select pg_temp.denied($$select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"c2000000-0000-4000-8000-000000000001","nombre":"REN SEDE X"}')$$,'22023','la unidad exige renovación por defecto');
 select pg_temp.denied($$select public.admin_guardar_catalogo('unidades',null,'{"cliente_id":"c2000000-0000-4000-8000-000000000001","nombre":"REN SEDE Y","renovacion_defecto":"AMBOS"}')$$,'22023','la unidad no admite AMBOS');
 select pg_temp.ok((public.admin_guardar_catalogo('unidades',(select id from public.unidades where nombre='REN SEDE NUEVA'),'{"cliente_id":"c2000000-0000-4000-8000-000000000001","nombre":"REN SEDE NUEVA","renovacion_defecto":"VERANO"}')->'row'->>'renovacion_defecto')='VERANO','admin edita la renovación por defecto de la unidad');
-select pg_temp.ok((public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"REN-N1","nombre_prenda":"NUEVA","codigo_almacen":"N","precio":5,"cantidad":1,"cliente_id":"c2000000-0000-4000-8000-000000000001","genero":"MUJER","renovacion":"INVIERNO"}')->'row'->>'renovacion')='INVIERNO','admin crea prenda con renovación INVIERNO');
-select pg_temp.ok((public.admin_guardar_catalogo('prendas',(select id from public.prendas where codigo_prenda='REN-N1'),'{"codigo_prenda":"REN-N1","nombre_prenda":"NUEVA","codigo_almacen":"N","precio":5,"cantidad":1,"cliente_id":"c2000000-0000-4000-8000-000000000001","genero":"MUJER","renovacion":"AMBOS"}')->'row'->>'renovacion')='AMBOS','admin edita la renovación de la prenda');
-select pg_temp.denied($$select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"REN-N2","nombre_prenda":"N","codigo_almacen":"N","precio":5,"cantidad":1,"cliente_id":"c2000000-0000-4000-8000-000000000001","genero":"MUJER"}')$$,'22023','la prenda exige renovación');
-select pg_temp.denied($$select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"REN-N3","nombre_prenda":"N","codigo_almacen":"N","precio":5,"cantidad":1,"cliente_id":"c2000000-0000-4000-8000-000000000001","genero":"MUJER","renovacion":"OTOÑO"}')$$,'22023','la prenda rechaza una renovación desconocida');
 select pg_temp.ok((select bool_and(r->>'renovacion_defecto' is not null) from jsonb_array_elements(public.admin_listar_catalogo('unidades')->'rows') r),'el listado de unidades devuelve la renovación por defecto');
-select pg_temp.ok((select bool_and(r->>'renovacion' is not null) from jsonb_array_elements(public.admin_listar_catalogo('prendas')->'rows') r),'el listado de prendas devuelve la renovación');
-select pg_temp.ok((public.admin_importar_catalogo('prendas','[{"codigo_prenda":"REN-IMP1","nombre_prenda":"IMP","codigo_almacen":"I","precio":10,"cantidad":1,"cliente":"REN CLIENTE","genero":"HOMBRE","renovacion":"INVIERNO","activo":true}]')->>'nuevos')::int=1,'importación crea prenda con renovación');
-select pg_temp.ok((select renovacion from public.prendas where codigo_prenda='REN-IMP1')='INVIERNO','la importación guarda la renovación');
-select pg_temp.denied($$select public.admin_importar_catalogo('prendas','[{"codigo_prenda":"REN-IMP2","nombre_prenda":"IMP","codigo_almacen":"I","precio":10,"cantidad":1,"cliente":"REN CLIENTE","genero":"HOMBRE","renovacion":"OTOÑO","activo":true}]')$$,'22023','importación rechaza renovación inválida');
-select pg_temp.denied($$select public.admin_importar_catalogo('prendas','[{"codigo_prenda":"REN-IMP3","nombre_prenda":"IMP","codigo_almacen":"I","precio":10,"cantidad":1,"cliente":"REN CLIENTE","genero":"HOMBRE","activo":true}]')$$,'22023','importación exige la columna renovación');
 reset role;
 
 \echo '--- filtros por renovación (propios y administración) ---'

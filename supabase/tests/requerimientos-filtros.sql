@@ -11,10 +11,13 @@ update public.profiles set role='admin' where id='1a000000-0000-4000-8000-000000
 insert into public.clientes(id,nombre) values('5a000000-0000-4000-8000-000000000001','FILTRO CLIENTE');
 insert into public.unidades(id,cliente_id,nombre) values('6a000000-0000-4000-8000-000000000001','5a000000-0000-4000-8000-000000000001','FILTRO SEDE');
 insert into public.personal(id,codigo_personal,nombre,dni,cargo) values('2a000000-0000-4000-8000-000000000001','FIL-P','AGENTE FILTRO','12345679','AGENTE');
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,activo,genero) values
- ('3a000000-0000-4000-8000-000000000001','FIL-H','PRENDA HOMBRE','H',10,'FILTRO CLIENTE',2,true,'HOMBRE'),
- ('3a000000-0000-4000-8000-000000000002','FIL-M','PRENDA MUJER','M',20,'FILTRO CLIENTE',1,true,'MUJER'),
- ('3a000000-0000-4000-8000-000000000003','FIL-A','PRENDA UNISEX','A',30,'FILTRO CLIENTE',3,true,'AMBOS');
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,activo,genero) values
+ ('3a000000-0000-4000-8000-000000000001','FIL-H','PRENDA HOMBRE','H',10,true,'HOMBRE'),
+ ('3a000000-0000-4000-8000-000000000002','FIL-M','PRENDA MUJER','M',20,true,'MUJER'),
+ ('3a000000-0000-4000-8000-000000000003','FIL-A','PRENDA UNISEX','A',30,true,'AMBOS');
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='FILTRO CLIENTE' where p.codigo_prenda='FIL-H';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='FILTRO CLIENTE' where p.codigo_prenda='FIL-M';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',3,true from public.prendas p join public.clientes c on c.nombre='FILTRO CLIENTE' where p.codigo_prenda='FIL-A';
 insert into public.requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id,estado,referencia_interna) values
  ('4a000000-0000-4000-8000-000000000001','2a000000-0000-4000-8000-000000000001','1a000000-0000-4000-8000-000000000001','5a000000-0000-4000-8000-000000000001','6a000000-0000-4000-8000-000000000001','Observado','FILTRO-OBS'),
  ('4a000000-0000-4000-8000-000000000002','2a000000-0000-4000-8000-000000000001','1a000000-0000-4000-8000-000000000001','5a000000-0000-4000-8000-000000000001','6a000000-0000-4000-8000-000000000001','Pendiente','FILTRO-PEN');

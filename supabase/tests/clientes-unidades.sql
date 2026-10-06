@@ -36,9 +36,11 @@ insert into unidades(id,cliente_id,nombre,activo) values
 ('66000000-0000-4000-8000-000000000001','55000000-0000-4000-8000-000000000001','QA Unidad A',true),
 ('66000000-0000-4000-8000-000000000002','55000000-0000-4000-8000-000000000002','QA Unidad B',true),
 ('66000000-0000-4000-8000-000000000003','55000000-0000-4000-8000-000000000001','QA Unidad inactiva',false);
-insert into prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad) values
-('33000000-0000-4000-8000-000000000001','QA-A','QA Camisa','QA-ALM',25.75,'QA Cliente A',3),
-('33000000-0000-4000-8000-000000000002','QA-B','QA Pantalón','QA-ALM-B',40,'QA Cliente B',2);
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio) values
+ ('33000000-0000-4000-8000-000000000001','QA-A','QA Camisa','QA-ALM',25.75),
+ ('33000000-0000-4000-8000-000000000002','QA-B','QA Pantalón','QA-ALM-B',40);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',3,true from public.prendas p join public.clientes c on c.nombre='QA Cliente A' where p.codigo_prenda='QA-A';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='QA Cliente B' where p.codigo_prenda='QA-B';
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub','11000000-0000-4000-8000-000000000001',true);
@@ -96,7 +98,7 @@ select pg_temp.assert_true((select count(*)=0 from clientes where id='55000000-0
 select pg_temp.assert_true((select count(*)=0 from unidades where id='66000000-0000-4000-8000-000000000001'),'otro coordinador no accede a la unidad inactiva histórica ajena');
 
 reset role;
-select pg_temp.expect_error($cmd$update prendas set cantidad=0 where codigo_prenda='QA-A'$cmd$,'prendas_cantidad_positiva');
+select pg_temp.expect_error($cmd$update prenda_clientes set cantidad=0 where prenda_id=(select id from prendas where codigo_prenda='QA-A')$cmd$,'prenda_clientes_cantidad_check');
 select pg_temp.expect_error($cmd$update requerimientos set cliente_id='55000000-0000-4000-8000-000000000002' where usuario_creador_id='11000000-0000-4000-8000-000000000001'$cmd$,'Solo se permite cambiar el estado');
 select pg_temp.assert_true((select count(*)=7 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('clientes','unidades','personal','prendas','profiles','requerimientos','detalle_requerimiento') and c.relrowsecurity),'RLS sigue activo en las siete tablas');
 set local role anon;

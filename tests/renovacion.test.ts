@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { catalogCreateSchema, IMPORT_HEADERS, prepareImport } from "../lib/admin/maintenance";
+import { catalogCreateSchema } from "../lib/admin/maintenance";
+import { PRENDAS_REQUIRED_HEADERS, preparePrendasImport } from "../lib/admin/prendas-import";
 import { makeEditGarmentsHandler } from "../lib/requirements/handlers";
 import { requerimientoSchema } from "../lib/validations";
 import { editGarmentsSchema } from "../lib/requirements/edit";
@@ -42,17 +43,25 @@ test("al cambiar renovación o género, solo se quitan las prendas que ya no cor
   assert.deepEqual(ids(lines.filter(p => garmentFits(p, "INVIERNO", "MUJER"))), [inviernoGarment.id]);
 });
 
-// --- Importación con la columna Renovación --------------------------------------------------
-const importDb = { from: (table: string) => ({ select: (column: string) => ({ in: (_key: string, values: string[]) =>
-  Promise.resolve({ data: values.filter(v => table === "clientes" && v === "RENIEC").map(v => ({ [column]: v })), error: null }) }) }) } as unknown as SupabaseClient;
+// --- Importación con la columna Renovación (por cliente) ------------------------------------
+const CLIENTE = "58000000-0000-4000-8000-000000000001";
+function importDb(rpc: (name: string, args: Record<string, unknown>) => unknown = () => ({ data: emptyResult, error: null })) {
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const db = {
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { nombre: "RENIEC", activo: true }, error: null }) }) }) }),
+    rpc: async (name: string, args: Record<string, unknown>) => { calls.push({ name, args }); return rpc(name, args); },
+  } as unknown as SupabaseClient;
+  return { db, calls };
+}
+const emptyResult = { aplicado: false, cliente: "RENIEC", prendas_nuevas: 0, asignaciones_nuevas: 0, cantidades_actualizadas: 0, estados_actualizados: 0, sin_cambios: 0, alertas: [], conflictos: [], desactivar: [], fichas_inactivas: [] };
 const prendaRow = (codigo: string, renovacion: string | undefined, extra: Record<string, string> = {}) => ({
-  codigo_prenda: codigo, nombre_prenda: "Camisa", codigo_almacen: "A1", precio: "20.50", cantidad: "2", cliente: "RENIEC", genero: "HOMBRE",
+  codigo_prenda: codigo, nombre_prenda: "Camisa", codigo_almacen: "A1", precio: "20.50", cantidad: "2", genero: "HOMBRE",
   ...(renovacion === undefined ? {} : { renovacion }), activo: "true", ...extra,
 });
-const prendaPayload = (rows: Record<string, string>[], headers: string[] = [...IMPORT_HEADERS.prendas]) => ({ kind: "prendas" as const, mode: "preview" as const, headers, rows });
+const prendaPayload = (rows: Record<string, string>[], headers: string[] = [...PRENDAS_REQUIRED_HEADERS]) => ({ kind: "prendas" as const, cliente_id: CLIENTE, mode: "preview" as const, headers, rows });
 
 test("la plantilla de prendas incluye la columna renovacion antes de activo", () => {
-  assert.deepEqual(IMPORT_HEADERS.prendas.slice(-3), ["genero", "renovacion", "activo"]);
+  assert.deepEqual(PRENDAS_REQUIRED_HEADERS.slice(-2), ["renovacion", "activo"]);
 });
 test("normaliza Verano/Invierno/Ambos sin importar mayúsculas ni tildes", () => {
   for (const [input, expected] of [["Verano", "VERANO"], [" invierno ", "INVIERNO"], ["AMBOS", "AMBOS"], ["Ámbos", "AMBOS"], ["VERÁNO", "VERANO"]] as const) {
@@ -61,33 +70,39 @@ test("normaliza Verano/Invierno/Ambos sin importar mayúsculas ni tildes", () =>
   for (const bad of ["otoño", "", "verano/invierno", undefined]) assert.equal(normalizeRenovacion(bad), null);
 });
 test("importación acepta la columna Renovación con tilde y cualquier mayúscula", async () => {
-  const headers = ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "cliente", "género", "Renovación", "activo"];
+  const headers = ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "Género", "Renovación", "activo"];
   const rows = [
-    { ...prendaRow("G1", undefined), "género": "HOMBRE", "Renovación": "verano" },
-    { ...prendaRow("G2", undefined), "género": "MUJER", "Renovación": "INVIERNO" },
-    { ...prendaRow("G3", undefined), "género": "MUJER", "Renovación": "Ámbos" },
+    { ...prendaRow("G1", undefined), "Género": "HOMBRE", "Renovación": "verano" },
+    { ...prendaRow("G2", undefined), "Género": "MUJER", "Renovación": "INVIERNO" },
+    { ...prendaRow("G3", undefined), "Género": "MUJER", "Renovación": "Ámbos" },
   ];
-  const { preview } = await prepareImport(importDb, prendaPayload(rows, headers));
+  const { db, calls } = importDb();
+  const { preview } = await preparePrendasImport(db, prendaPayload(rows, headers));
   assert.equal(preview.errores, 0);
-  assert.deepEqual(preview.rows.map(r => r.renovacion), ["VERANO", "INVIERNO", "AMBOS"]);
+  assert.deepEqual((calls[0].args.p_filas as { renovacion: string }[]).map(r => r.renovacion), ["VERANO", "INVIERNO", "AMBOS"]);
 });
 test("importación con renovación inválida marca error indicando la fila", async () => {
-  const { preview } = await prepareImport(importDb, prendaPayload([prendaRow("G1", "Verano"), prendaRow("G2", "Otoño"), prendaRow("G3", "")]));
-  assert.equal(preview.rows.length, 1);
+  const { db, calls } = importDb();
+  const { preview } = await preparePrendasImport(db, prendaPayload([prendaRow("G1", "Verano"), prendaRow("G2", "Otoño"), prendaRow("G3", "")]));
+  assert.equal((calls[0].args.p_filas as unknown[]).length, 1);
   assert.deepEqual(preview.issues.map(i => [i.row, i.code, i.action]), [[3, "G2", "error"], [4, "G3", "error"]]);
   assert.match(preview.issues[0].message, /Renovación inválida "Otoño"/);
 });
 test("importación sin la columna renovacion se rechaza por encabezados", async () => {
-  const headers = IMPORT_HEADERS.prendas.filter(h => h !== "renovacion");
-  await assert.rejects(prepareImport(importDb, prendaPayload([prendaRow("G1", undefined)], headers)), /Encabezados requeridos/);
+  const headers = PRENDAS_REQUIRED_HEADERS.filter(h => h !== "renovacion");
+  await assert.rejects(preparePrendasImport(importDb().db, prendaPayload([prendaRow("G1", undefined)], [...headers])), /Encabezados requeridos/);
 });
 
 // --- Renovación en el catálogo (prendas y unidades) ------------------------------------------
-const garmentValues = { codigo_prenda: "G1", nombre_prenda: "Camisa", codigo_almacen: "A1", precio: 20, cantidad: 1, cliente_id: "58000000-0000-4000-8000-000000000001", genero: "AMBOS" };
-test("Mantenimiento → Prendas exige renovación VERANO, INVIERNO o AMBOS", () => {
-  for (const renovacion of ["VERANO", "INVIERNO", "AMBOS"]) assert.ok(catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, renovacion } }).success);
-  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: garmentValues }).success);
-  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, renovacion: "OTOÑO" } }).success);
+const garmentValues = { codigo_prenda: "G1", nombre_prenda: "Camisa", codigo_almacen: "A1", precio: 20, genero: "AMBOS" };
+const asignacion = { cliente_id: CLIENTE, cantidad: 1, activo: true };
+test("Mantenimiento → Prendas: la renovación va en cada asignación (VERANO, INVIERNO o AMBOS)", () => {
+  for (const renovacion of ["VERANO", "INVIERNO", "AMBOS"]) assert.ok(catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...asignacion, renovacion }] } }).success);
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [asignacion] } }).success);
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, asignaciones: [{ ...asignacion, renovacion: "OTOÑO" }] } }).success);
+  // la ficha ya no lleva cliente, cantidad ni renovación
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, cantidad: 1 } }).success);
+  assert.ok(!catalogCreateSchema.safeParse({ catalogo: "prendas", valores: { ...garmentValues, renovacion: "AMBOS" } }).success);
 });
 test("Mantenimiento → Unidades exige renovación por defecto Verano o Invierno (no AMBOS)", () => {
   const unit = { cliente_id: "58000000-0000-4000-8000-000000000001", nombre: "Sede" };

@@ -21,12 +21,17 @@ select pg_temp.check_edit(enum_range(null::user_role)::text='{coordinador,admin}
 insert into clientes(id,nombre) values('53000000-0000-4000-8000-000000000001','EDIT A');
 insert into unidades(id,cliente_id,nombre) values('63000000-0000-4000-8000-000000000001','53000000-0000-4000-8000-000000000001','EDIT SEDE');
 insert into personal(id,codigo_personal,nombre,dni,cargo) values('23000000-0000-4000-8000-000000000001','EDIT-P','EDIT AGENT','01234567','AGENTE');
-insert into prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,activo) values
-('33000000-0000-4000-8000-000000000001','EDIT-A','CAMISA','MASTER A',99,'EDIT A',5,true),
-('33000000-0000-4000-8000-000000000002','EDIT-B','PANTALON','MASTER B',100,'EDIT A',6,true),
-('33000000-0000-4000-8000-000000000003','EDIT-C','GORRA','MASTER C',101,'EDIT A',7,true),
-('33000000-0000-4000-8000-000000000004','EDIT-D','OTRO','MASTER D',102,'OTHER CLIENT',1,true),
-('33000000-0000-4000-8000-000000000005','EDIT-E','INACTIVA','MASTER E',103,'EDIT A',1,false);
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,activo) values
+ ('33000000-0000-4000-8000-000000000001','EDIT-A','CAMISA','MASTER A',99,true),
+ ('33000000-0000-4000-8000-000000000002','EDIT-B','PANTALON','MASTER B',100,true),
+ ('33000000-0000-4000-8000-000000000003','EDIT-C','GORRA','MASTER C',101,true),
+ ('33000000-0000-4000-8000-000000000004','EDIT-D','OTRO','MASTER D',102,true),
+ ('33000000-0000-4000-8000-000000000005','EDIT-E','INACTIVA','MASTER E',103,false);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',5,true from public.prendas p join public.clientes c on c.nombre='EDIT A' where p.codigo_prenda='EDIT-A';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',6,true from public.prendas p join public.clientes c on c.nombre='EDIT A' where p.codigo_prenda='EDIT-B';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',7,true from public.prendas p join public.clientes c on c.nombre='EDIT A' where p.codigo_prenda='EDIT-C';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='OTHER CLIENT' where p.codigo_prenda='EDIT-D';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,false from public.prendas p join public.clientes c on c.nombre='EDIT A' where p.codigo_prenda='EDIT-E';
 insert into requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id) values
 ('43000000-0000-4000-8000-000000000001','23000000-0000-4000-8000-000000000001','13000000-0000-4000-8000-000000000001','53000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001');
 select set_config('qa.header_count',(select count(*)::text from requerimientos),true);

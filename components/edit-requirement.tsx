@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ATTENDED_MESSAGE, canEditRequirement, initialEditLines, newEditLine, type EditPayload } from "@/lib/requirements/edit";
-import type { Prenda, Profile } from "@/lib/types";
+import type { Profile } from "@/lib/types";
 import { RequirementFacts } from "@/components/requirement-facts";
 import { StatusBadge } from "@/components/status-badge";
 import { Alert } from "@/components/ui/alert";
@@ -13,7 +13,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { GarmentGenderPicker } from "@/components/garment-gender-picker";
 import { RequirementTotal } from "@/components/requirement-total";
-import { useActiveCatalog } from "@/components/use-active-catalog";
+import { useClientGarments } from "@/components/use-client-garments";
 import { genderLabel, inferGender, isGenderCompatible, type GenderChoice } from "@/lib/garments/gender";
 import { garmentChoices, garmentFits, renovacionLabel } from "@/lib/garments/renovacion";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
@@ -32,10 +32,8 @@ export function EditRequirement({ initial, profile }: { initial: EditPayload; pr
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const savingRef = useRef(false);
-  // La renovación del requerimiento no se edita: solo se ofrecen prendas de esa renovación o AMBOS.
-  const inFilters = useMemo(() => ({ genero: gender ? [gender, "AMBOS"] : [], renovacion: [row.renovacion, "AMBOS"] }), [gender, row.renovacion]);
-  const garments = useActiveCatalog<Prenda>(db, "prendas", allowed && Boolean(row.clientes?.nombre && gender) && !success,
-    { column: "cliente", value: row.clientes?.nombre ?? "" }, inFilters);
+  // La renovación del requerimiento no se edita: solo prendas asignadas a su cliente para esa renovación (o AMBOS).
+  const garments = useClientGarments(db, allowed && Boolean(row.cliente_id && row.clientes?.nombre && gender) && !success, row.cliente_id, row.renovacion);
   const visibleGarments = garments.rows.filter(garment => gender && garmentFits(garment, row.renovacion, gender));
   const choices = garmentChoices(visibleGarments, lines.map(line => line.prenda_id));
   const chosen = visibleGarments.find(p => p.id === selected);

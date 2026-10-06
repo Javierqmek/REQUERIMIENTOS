@@ -11,8 +11,9 @@ insert into public.personal(id,codigo_personal,nombre,dni,cargo) values
  ('27000000-0000-4000-8000-000000000001','M-P1','Agente prueba','12345678','Agente');
 insert into public.clientes(id,nombre) values ('57000000-0000-4000-8000-000000000001','Cliente mantenimiento');
 insert into public.unidades(id,cliente_id,nombre) values ('67000000-0000-4000-8000-000000000001','57000000-0000-4000-8000-000000000001','Unidad mantenimiento');
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cantidad,cliente,genero) values
- ('37000000-0000-4000-8000-000000000001','M-G1','Prenda prueba','ALM-1',20,2,'Cliente mantenimiento','AMBOS');
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,genero) values
+ ('37000000-0000-4000-8000-000000000001','M-G1','Prenda prueba','ALM-1',20,'AMBOS');
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='Cliente mantenimiento' where p.codigo_prenda='M-G1';
 insert into public.requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id,estado) values
  ('47000000-0000-4000-8000-000000000001','27000000-0000-4000-8000-000000000001','17000000-0000-4000-8000-000000000002','57000000-0000-4000-8000-000000000001','67000000-0000-4000-8000-000000000001','Pendiente'),
  ('47000000-0000-4000-8000-000000000002','27000000-0000-4000-8000-000000000001','17000000-0000-4000-8000-000000000002','57000000-0000-4000-8000-000000000001','67000000-0000-4000-8000-000000000001','Observado'),
@@ -55,7 +56,8 @@ select pg_temp.ok((select not activo from public.clientes where id='57000000-000
 select pg_temp.ok((select not activo from public.personal where id='27000000-0000-4000-8000-000000000001') and (select not activo from public.prendas where id='37000000-0000-4000-8000-000000000001'),'personal y prendas usan baja lógica');
 select pg_temp.ok((public.admin_importar_catalogo('personal','[{"codigo_personal":"M-P1","nombre":"Actualizado","dni":"87654321","cargo":"Supervisor","activo":true},{"codigo_personal":"M-P2","nombre":"Nuevo","dni":"11112222","cargo":"Agente","activo":true}]')->>'actualizados')::int=1,'importacion actualiza por codigo');
 select pg_temp.ok((select count(*)=2 from public.personal where codigo_personal in ('M-P1','M-P2')),'importacion no duplica');
-select pg_temp.ok((public.admin_importar_catalogo('prendas','[{"codigo_prenda":"M-G1","nombre_prenda":"Prenda actualizada","codigo_almacen":"A-2","precio":25.50,"cantidad":3,"cliente":"Cliente mantenimiento","genero":"HOMBRE","renovacion":"VERANO","activo":true},{"codigo_prenda":"M-G2","nombre_prenda":"Prenda nueva","codigo_almacen":"A-3","precio":30,"cantidad":1,"cliente":"Cliente mantenimiento","genero":"AMBOS","renovacion":"AMBOS","activo":true}]')->>'nuevos')::int=1,'importacion prendas inserta y actualiza');
+select public.admin_actualizar_catalogo_activo('clientes','57000000-0000-4000-8000-000000000001',true);
+select pg_temp.ok((public.admin_importar_prendas('57000000-0000-4000-8000-000000000001','[{"fila":2,"codigo_prenda":"M-G1","nombre_prenda":"Prenda actualizada","codigo_almacen":"A-2","precio":25.50,"cantidad":3,"genero":"HOMBRE","renovacion":"AMBOS","activo":true},{"fila":3,"codigo_prenda":"M-G2","nombre_prenda":"Prenda nueva","codigo_almacen":"A-3","precio":30,"cantidad":1,"genero":"AMBOS","renovacion":"AMBOS","activo":true}]',true)->>'prendas_nuevas')::int=1,'importacion de prendas por cliente: una ficha nueva y una existente reutilizada');
 select pg_temp.ok((select count(*)=2 from public.prendas where codigo_prenda in ('M-G1','M-G2')),'importacion prendas no duplica');
 select pg_temp.denied($q$select public.admin_importar_catalogo('personal','[{"codigo_personal":"M-X","nombre":"X","dni":"mal","cargo":"X","activo":true}]')$q$);
 reset role;

@@ -39,7 +39,7 @@ const initialCatalogRows = {
   clientes: options.clientes.map((row,index)=>({...row,activo:index===0})),
   unidades: options.unidades.map((row,index)=>({...row,renovacion_defecto:"VERANO",clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
-  prendas: editGarments.map((row,index)=>({...row,activo:index!==1})),
+  prendas: editGarments.map((row,index)=>({id:row.id,codigo_prenda:row.codigo_prenda,nombre_prenda:row.nombre_prenda,codigo_almacen:row.codigo_almacen,precio:row.precio,genero:row.genero,activo:index!==1,asignaciones:[{id:"a"+row.id.slice(1),cliente_id:IDS.cliente,cliente:"RENIEC",renovacion:row.renovacion,cantidad:row.cantidad,activo:true}]})),
   provincias: [{id:"aa100000-0000-4000-8000-000000000001",nombre:"Lima",activo:true},{id:"aa100000-0000-4000-8000-000000000002",nombre:"Arequipa",activo:true}],
 };
 const recordsByProject=new Map<string,typeof initialRecords>();
@@ -86,7 +86,7 @@ async function main() {
             prendas: [...editGarments, inviernoGarment, veranoGarment],
             provincias: [{ id: "aa100000-0000-4000-8000-000000000001", nombre: "AREQUIPA", activo: true }, { id: "aa100000-0000-4000-8000-000000000002", nombre: "CUSCO", activo: true }],
           })}; const agents=[{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA AGENTE OPERATIVA",dni:"12345678",cargo:"AGENTE",activo:true},{id:"22000000-0000-4000-8000-000000000002",codigo_personal:"PER-002",nombre:"CARLOS REEMPLAZO OPERATIVO",dni:"87654321",cargo:"AGENTE",activo:true}];
-          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name){const result=name==="buscar_personal"?{data:agents,error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(table==="papeletas_vacaciones"?[{id:"aa000000-0000-4000-8000-000000000099"}]:(table==="provincias"&&new URLSearchParams(window.location.search).get("sinProvincias")==="1")?[]:(catalogs[table]||[]))];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}},async maybeSingle(){await new Promise(r=>setTimeout(r,20));return {data:rows[0]??null,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
+          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name,args){const result=name==="buscar_personal"?{data:agents,error:null}:name==="listar_prendas_cliente"?{data:catalogs.prendas.filter(p=>p.renovacion==="AMBOS"||p.renovacion===args.p_renovacion),error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},range(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(table==="papeletas_vacaciones"?[{id:"aa000000-0000-4000-8000-000000000099"}]:(table==="provincias"&&new URLSearchParams(window.location.search).get("sinProvincias")==="1")?[]:(catalogs[table]||[]))];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}},async maybeSingle(){await new Promise(r=>setTimeout(r,20));return {data:rows[0]??null,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
       }));
     } }],
   });
@@ -147,7 +147,16 @@ async function main() {
       }
       if (url.pathname === "/api/admin/importaciones" && req.method === "POST") {
         let body=""; for await(const chunk of req) body+=chunk.toString(); const input=JSON.parse(body);
-        await delay(250); sendJson(input.mode==="preview"?{rows:input.rows,issues:[],nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}:{nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}); return;
+        if(input.kind==="prendas"){
+          await delay(250);
+          const replace=input.reemplazar===true;
+          const prendas={aplicado:input.mode==="apply",cliente:"RENIEC",prendas_nuevas:1,asignaciones_nuevas:2,cantidades_actualizadas:1,estados_actualizados:0,sin_cambios:3,
+            alertas:[{codigo:"CAM001",nombre:"CAMISA",cambios:[{campo:"precio",actual:"40.00",archivo:"45.00"}]}],conflictos:[],
+            desactivar:replace?[{codigo:"OLD001",nombre:"ANTIGUA",renovacion:"VERANO",cantidad:2},{codigo:"OLD002",nombre:"OTRA",renovacion:"AMBOS",cantidad:1}]:[],fichas_inactivas:[]};
+          const issues=input.rows.length>3?[{row:5,code:"ACS0206",message:"ACS0206 con renovación VERANO está repetido en las filas 5 y 9. Deja una sola fila por código y renovación.",action:"error"}]:[];
+          sendJson({rows:input.rows,issues,nuevos:2,actualizados:1,omitidos:0,errores:issues.length,prendas}); return;
+        }
+        sendJson(input.mode==="preview"?{rows:input.rows,issues:[],nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}:{nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}); return;
       }
       if (url.pathname === "/api/admin/catalogos") {
         if(req.method!=="GET"){
@@ -162,14 +171,14 @@ async function main() {
           if(!row){row={id:catalogId(),activo:true};rows.push(row);}
           Object.assign(row,values);
           if(kind==="unidades"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.clientes={nombre:selected?.nombre??"Cliente nuevo"};}
-          if(kind==="prendas"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.cliente=selected?.nombre??"Cliente nuevo";delete row.cliente_id;}
+          if(kind==="prendas"){row.asignaciones=((values.asignaciones??row.asignaciones??[]) as {id?:string;cliente_id:string;renovacion:string;cantidad:number;activo:boolean}[]).map(item=>({id:item.id??catalogId(),cliente_id:item.cliente_id,cliente:options.clientes.find(client=>client.id===item.cliente_id)?.nombre??"Cliente nuevo",renovacion:item.renovacion,cantidad:item.cantidad,activo:item.activo}));}
           sendJson({accion:req.method==="POST"?"crear":"editar",row},req.method==="POST"?201:200);return;
         }
         const kind=(url.searchParams.get("catalogo")||"clientes") as keyof typeof catalogRows;
         let rows=[...catalogRows[kind]] as Record<string,unknown>[]; const q=(url.searchParams.get("q")||"").toLowerCase();
         if(q)rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
         if(client&&kind==="unidades")rows=rows.filter(row=>row.cliente_id===client);
-        if(client&&kind==="prendas")rows=rows.filter(row=>row.cliente===options.clientes.find(c=>c.id===client)?.nombre);
+        if(client&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {cliente_id:string}[]).some(item=>item.cliente_id===client));
         const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>row.genero===gender);
         if(kind==="clientes"||kind==="unidades")rows=rows.map(row=>({...row,puede_eliminar:!["RENIEC","CLIENTE CON NOMBRE CORPORATIVO EXTENSO","OFICINA REGISTRAL ATE","SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA"].includes(String(row.nombre)),...(kind==="unidades"?{puede_cambiar_cliente:!String(row.nombre).includes("OFICINA")}: {})}));
         await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;

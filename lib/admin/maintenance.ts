@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PRENDA_RENOVACIONES, RENOVACIONES, normalizeRenovacion } from "@/lib/garments/renovacion";
+import { PRENDA_RENOVACIONES, RENOVACIONES } from "@/lib/garments/renovacion";
 
 export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas", "provincias"] as const;
 export type CatalogKind = typeof CATALOG_KINDS[number];
@@ -51,10 +51,14 @@ const garmentValues = z.object({
   codigo_prenda: shortText(80, "El código"), nombre_prenda: shortText(240, "El nombre"),
   codigo_almacen: shortText(80, "El código de almacén"),
   precio: z.number().finite().min(0).max(9999999999.99).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8, "Usa como máximo dos decimales."),
-  cantidad: z.number().int().min(1).max(10000),
-  cliente_id: z.string().uuid("Selecciona un cliente válido."),
   genero: z.enum(["HOMBRE", "MUJER", "AMBOS"]),
-  renovacion: z.enum(PRENDA_RENOVACIONES, { error: "La renovación debe ser Verano, Invierno o Ambos." }),
+  // Asignaciones de la prenda: cliente, renovación, cantidad y estado. No se borran: se desactivan.
+  asignaciones: z.array(z.object({
+    id: z.string().uuid().optional(), cliente_id: z.string().uuid("Selecciona un cliente válido."),
+    renovacion: z.enum(PRENDA_RENOVACIONES, { error: "La renovación debe ser Verano, Invierno o Ambos." }),
+    cantidad: z.number().int("La cantidad debe ser un entero.").min(1, "La cantidad mínima es 1.").max(10000),
+    activo: z.boolean(),
+  }).strict()).max(200).optional(),
 }).strict();
 const provinceValues = z.object({ nombre: shortText(200, "El nombre") }).strict();
 const createSchemas = [
@@ -81,7 +85,7 @@ export const IMPORT_KINDS = ["personal", "prendas"] as const;
 export type ImportKind = typeof IMPORT_KINDS[number];
 export const IMPORT_HEADERS: Record<ImportKind, readonly string[]> = {
   personal: ["codigo_personal", "nombre", "dni", "cargo", "activo"],
-  prendas: ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "cliente", "genero", "renovacion", "activo"],
+  prendas: ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "genero", "renovacion", "activo"],
 };
 export type RawImport = { kind: ImportKind; headers: string[]; rows: Record<string, string>[] };
 export type ImportIssue = { row: number; code: string; message: string; action: "error" | "omitido" };
@@ -99,8 +103,9 @@ function clean(value: string, max: number) {
   const text = value.trim();
   return text && text.length <= max && !/[\u0000-\u001f]/.test(text) ? text : null;
 }
+// Las prendas se importan por cliente (lib/admin/prendas-import.ts); aquí solo queda Personal.
 const payloadSchema = z.object({
-  kind: z.enum(IMPORT_KINDS), headers: z.array(z.string()).max(12),
+  kind: z.literal("personal"), headers: z.array(z.string()).max(12),
   rows: z.array(z.record(z.string(), z.string())).min(1).max(1000), mode: z.enum(["preview", "apply"]),
 }).strict();
 async function findValues(db: SupabaseClient, table: string, column: string, values: string[]) {
@@ -117,11 +122,10 @@ export async function prepareImport(db: SupabaseClient, input: unknown) {
   if (parsed.headers.length!==expected.length || parsed.headers.some((h,i)=>headerKey(h)!==expected[i])) {
     throw new z.ZodError([{ code:"custom", path:["headers"], message:`Encabezados requeridos: ${expected.join(", ")}` }]);
   }
-  const key = parsed.kind === "personal" ? "codigo_personal" : "codigo_prenda";
+  const key = "codigo_personal";
   const records=parsed.rows.map(row=>Object.fromEntries(Object.entries(row).map(([name,value])=>[headerKey(name),value])));
   const codes=records.map(row=>row[key]?.trim()).filter(Boolean);
   const existing=await findValues(db,parsed.kind,key,[...new Set(codes)]);
-  const clients=parsed.kind === "prendas" ? await findValues(db,"clientes","nombre",[...new Set(records.map(r=>r.cliente?.trim()).filter(Boolean))]) : new Set<string>();
   const seen=new Set<string>(); const rows:Record<string,unknown>[]=[]; const issues:ImportIssue[]=[]; let nuevos=0,actualizados=0;
   records.forEach((raw,index)=>{
     const rowNumber=index+2; const code=clean(raw[key]??"",80)??"";
@@ -133,15 +137,6 @@ export async function prepareImport(db: SupabaseClient, input: unknown) {
       const nombre=clean(raw.nombre??"",200),dni=(raw.dni??"").trim(),cargo=clean(raw.cargo??"",120);
       if (!nombre || !cargo || !/^\d{8,12}$/.test(dni)) { issues.push({row:rowNumber,code,message:"Revisa nombre, cargo y DNI (8 a 12 dígitos).",action:"error"}); return; }
       rows.push({codigo_personal:code,nombre,dni,cargo,activo:active});
-    } else {
-      const renovacion=normalizeRenovacion(raw.renovacion);
-      if (!renovacion) { issues.push({row:rowNumber,code,message:`Renovación inválida "${(raw.renovacion??"").trim()}". Usa Verano, Invierno o Ambos.`,action:"error"}); return; }
-      const nombre=clean(raw.nombre_prenda??"",240),almacen=clean(raw.codigo_almacen??"",80),cliente=clean(raw.cliente??"",200);
-      const precio=Number(raw.precio),cantidad=Number(raw.cantidad),genero=(raw.genero??"").trim().toUpperCase();
-      if (!nombre || !almacen || !cliente || !clients.has(cliente) || !Number.isFinite(precio) || precio<0 || !/^\d+(\.\d{1,2})?$/.test(raw.precio??"") || !Number.isInteger(cantidad) || cantidad<1 || cantidad>10000 || !["HOMBRE","MUJER","AMBOS"].includes(genero)) {
-        issues.push({row:rowNumber,code,message:"Revisa nombre, almacén, precio, cantidad, género y cliente existente.",action:"error"}); return;
-      }
-      rows.push({codigo_prenda:code,nombre_prenda:nombre,codigo_almacen:almacen,precio,cantidad,cliente,genero,renovacion,activo:active});
     }
     if (existing.has(code)) actualizados++; else nuevos++;
   });

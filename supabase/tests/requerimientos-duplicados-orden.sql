@@ -13,9 +13,11 @@ update public.profiles set role='admin' where id='19000000-0000-4000-8000-000000
 insert into public.clientes(id,nombre) values('59000000-0000-4000-8000-000000000001','DUP CLIENTE');
 insert into public.unidades(id,cliente_id,nombre) values('69000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','DUP UNIDAD');
 insert into public.personal(id,codigo_personal,nombre,dni,cargo) values('29000000-0000-4000-8000-000000000001','DUP-P','DUP AGENTE','12345670','AGENTE');
-insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad,activo,genero) values
- ('39000000-0000-4000-8000-000000000001','DUP-A','DUP PRENDA A','A',10,'DUP CLIENTE',2,true,'AMBOS'),
- ('39000000-0000-4000-8000-000000000002','DUP-B','DUP PRENDA B','B',20,'DUP CLIENTE',1,true,'AMBOS');
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,activo,genero) values
+ ('39000000-0000-4000-8000-000000000001','DUP-A','DUP PRENDA A','A',10,true,'AMBOS'),
+ ('39000000-0000-4000-8000-000000000002','DUP-B','DUP PRENDA B','B',20,true,'AMBOS');
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',2,true from public.prendas p join public.clientes c on c.nombre='DUP CLIENTE' where p.codigo_prenda='DUP-A';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',1,true from public.prendas p join public.clientes c on c.nombre='DUP CLIENTE' where p.codigo_prenda='DUP-B';
 set local role authenticated;
 select set_config('request.jwt.claim.sub','19000000-0000-4000-8000-000000000001',true);
 select set_config('qa.first',public.crear_requerimiento('29000000-0000-4000-8000-000000000001','59000000-0000-4000-8000-000000000001','69000000-0000-4000-8000-000000000001','VERANO','[{"prenda_id":"39000000-0000-4000-8000-000000000001"}]','99000000-0000-4000-8000-000000000001')::text,true);

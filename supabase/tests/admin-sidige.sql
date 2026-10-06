@@ -13,9 +13,11 @@ insert into unidades(id,cliente_id,nombre) values
 ('62000000-0000-4000-8000-000000000001','52000000-0000-4000-8000-000000000001','SEDE A'),
 ('62000000-0000-4000-8000-000000000002','52000000-0000-4000-8000-000000000002','SEDE B');
 insert into personal(id,codigo_personal,nombre,dni,cargo) values('22000000-0000-4000-8000-000000000003','ADMIN-TEST','JERY RAMÍREZ','071389725','AGENTE');
-insert into prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio,cliente,cantidad) values
-('32000000-0000-4000-8000-000000000001','000012','CAMISA','ACTUAL',99,'ADMIN TEST A',9),
-('32000000-0000-4000-8000-000000000002','000013','PANTALÓN','ACTUAL',99,'ADMIN TEST A',9);
+insert into public.prendas(id,codigo_prenda,nombre_prenda,codigo_almacen,precio) values
+ ('32000000-0000-4000-8000-000000000001','000012','CAMISA','ACTUAL',99),
+ ('32000000-0000-4000-8000-000000000002','000013','PANTALÓN','ACTUAL',99);
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',9,true from public.prendas p join public.clientes c on c.nombre='ADMIN TEST A' where p.codigo_prenda='000012';
+insert into public.prenda_clientes(prenda_id,cliente_id,renovacion,cantidad,activo) select p.id,c.id,'AMBOS',9,true from public.prendas p join public.clientes c on c.nombre='ADMIN TEST A' where p.codigo_prenda='000013';
 insert into requerimientos(id,agente_id,usuario_creador_id,cliente_id,unidad_id,fecha) values
 ('42000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000003','12000000-0000-4000-8000-000000000002','52000000-0000-4000-8000-000000000001','62000000-0000-4000-8000-000000000001','2026-09-02 04:59:59Z'),
 ('42000000-0000-4000-8000-000000000002','22000000-0000-4000-8000-000000000003','12000000-0000-4000-8000-000000000003','52000000-0000-4000-8000-000000000001','62000000-0000-4000-8000-000000000001','2026-09-02 05:00:00Z'),

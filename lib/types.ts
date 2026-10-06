@@ -11,7 +11,7 @@ export interface Unidad { id: string; cliente_id: string; nombre: string; renova
 export interface Provincia { id: string; nombre: string; activo: boolean }
 export interface Prenda {
   id: string; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string;
-  precio: number; cliente: string; cantidad: number; genero: import("@/lib/garments/gender").GarmentGender;
+  precio: number; cantidad: number; genero: import("@/lib/garments/gender").GarmentGender;
   renovacion: import("@/lib/garments/renovacion").PrendaRenovacion; activo: boolean;
 }
 export interface Detalle {
