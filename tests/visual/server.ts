@@ -151,6 +151,15 @@ async function main() {
       }
       if (url.pathname === "/api/admin/importaciones" && req.method === "POST") {
         let body=""; for await(const chunk of req) body+=chunk.toString(); const input=JSON.parse(body);
+        if(input.kind==="personal"){
+          await delay(250);
+          // El servidor real completa los DNI con menos de 8 dígitos; aquí se simula para probar la pantalla.
+          const dniCompletados=(input.rows as Record<string,string>[]).flatMap((row,index)=>{const dni=String(row.dni??"").trim();return /^\d{1,7}$/.test(dni)?[{fila:(input.filas?.[index]??index+2),codigo:row.codigo_personal,original:dni,dni:dni.padStart(8,"0")}]:[]});
+          const personal={aplicado:input.mode==="apply",nuevos:2,sin_cambios:1,actualizados:input.actualizar?.length??0,
+            diferencias:[{fila:3,dni:"12345678",nombre:"ANA PEREZ",codigo_personal:"R-1",vinculado:true,cambios:[{campo:"nombre",actual:"ANA PEREZ",archivo:"ANA PEREZ DIAZ"},{campo:"codigo_personal",actual:"R-1",archivo:"S-1"}]},{fila:4,dni:"22222222",nombre:"LUIS TORRES",codigo_personal:"R-2",vinculado:false,cambios:[{campo:"activo",actual:"Activo",archivo:"Inactivo"}]}],
+            errores:input.rows.length>3?[{fila:9,codigo:"S-9",mensaje:"El código S-9 ya pertenece a otra persona (DNI 99999999)"}]:[]};
+          sendJson({rows:input.rows,issues:personal.errores.map(e=>({row:e.fila,code:e.codigo,message:e.mensaje,action:"error"})),nuevos:2,actualizados:personal.actualizados||2,omitidos:1,errores:personal.errores.length,personal,dniCompletados}); return;
+        }
         if(input.kind==="prendas"){
           await delay(250);
           const replace=input.reemplazar===true;

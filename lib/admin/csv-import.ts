@@ -16,7 +16,7 @@ export function detectDelimiter(text:string){
 // rows: sin filas vacías (p. ej. ";;;;;;;" de Excel). filas: número de fila ORIGINAL del archivo (como lo ve Excel),
 // para que los errores indiquen la fila correcta aunque haya filas vacías en medio.
 export function parseCsv(text:string){
-  if(text.length>1024*1024)throw new Error("El archivo supera 1 MB.");
+  if(text.length>3*1024*1024)throw new Error("El archivo supera 3 MB.");
   const delimiter=detectDelimiter(text);
   if(/^﻿?sep=.\r?\n/i.test(text))text=text.replace(/^(﻿?)sep=.\r?\n/i,"$1");
   const matrix:string[][]=[];let row:string[]=[],field="",quoted=false;

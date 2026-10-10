@@ -86,62 +86,9 @@ export const catalogDeleteSchema = z.object({
 export const IMPORT_KINDS = ["personal", "prendas"] as const;
 export type ImportKind = typeof IMPORT_KINDS[number];
 export const IMPORT_HEADERS: Record<ImportKind, readonly string[]> = {
-  personal: ["codigo_personal", "nombre", "dni", "cargo", "activo"],
+  personal: ["codigo_personal", "nombre", "dni", "activo"],
   prendas: ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "genero", "renovacion", "activo"],
 };
 export type RawImport = { kind: ImportKind; headers: string[]; rows: Record<string, string>[] };
 export type ImportIssue = { row: number; code: string; message: string; action: "error" | "omitido" };
 export type ImportPreview = { rows: Record<string, unknown>[]; issues: ImportIssue[]; nuevos: number; actualizados: number; omitidos: number; errores: number };
-
-// Encabezados sin tildes ni mayúsculas: "Renovación" y "renovacion" son la misma columna.
-const headerKey = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
-function booleanValue(value: string) {
-  const normalized = value.trim().toLowerCase();
-  if (["true", "1", "si", "sí"].includes(normalized)) return true;
-  if (["false", "0", "no"].includes(normalized)) return false;
-  return null;
-}
-function clean(value: string, max: number) {
-  const text = value.trim();
-  return text && text.length <= max && !/[\u0000-\u001f]/.test(text) ? text : null;
-}
-// Las prendas se importan por cliente (lib/admin/prendas-import.ts); aquí solo queda Personal.
-const payloadSchema = z.object({
-  kind: z.literal("personal"), headers: z.array(z.string()).max(12),
-  rows: z.array(z.record(z.string(), z.string())).min(1).max(1000), mode: z.enum(["preview", "apply"]),
-}).strict();
-async function findValues(db: SupabaseClient, table: string, column: string, values: string[]) {
-  const found = new Set<string>();
-  for (let i=0;i<values.length;i+=150) {
-    const { data, error } = await db.from(table).select(column).in(column, values.slice(i,i+150));
-    if (error) throw new Error("No se pudieron validar los registros existentes.");
-    for (const row of data ?? []) found.add(String((row as unknown as Record<string, unknown>)[column]));
-  }
-  return found;
-}
-export async function prepareImport(db: SupabaseClient, input: unknown) {
-  const parsed = payloadSchema.parse(input); const expected=[...IMPORT_HEADERS[parsed.kind]];
-  if (parsed.headers.length!==expected.length || parsed.headers.some((h,i)=>headerKey(h)!==expected[i])) {
-    throw new z.ZodError([{ code:"custom", path:["headers"], message:`Encabezados requeridos: ${expected.join(", ")}` }]);
-  }
-  const key = "codigo_personal";
-  const records=parsed.rows.map(row=>Object.fromEntries(Object.entries(row).map(([name,value])=>[headerKey(name),value])));
-  const codes=records.map(row=>row[key]?.trim()).filter(Boolean);
-  const existing=await findValues(db,parsed.kind,key,[...new Set(codes)]);
-  const seen=new Set<string>(); const rows:Record<string,unknown>[]=[]; const issues:ImportIssue[]=[]; let nuevos=0,actualizados=0;
-  records.forEach((raw,index)=>{
-    const rowNumber=index+2; const code=clean(raw[key]??"",80)??"";
-    if (!code) { issues.push({row:rowNumber,code:"—",message:`${key} es obligatorio o demasiado largo.`,action:"error"}); return; }
-    if (seen.has(code)) { issues.push({row:rowNumber,code,message:"Código repetido dentro del archivo; se conserva la primera fila.",action:"omitido"}); return; }
-    seen.add(code); const active=booleanValue(raw.activo??"");
-    if (active===null) { issues.push({row:rowNumber,code,message:"activo debe ser true/false, sí/no o 1/0.",action:"error"}); return; }
-    if (parsed.kind === "personal") {
-      const nombre=clean(raw.nombre??"",200),dni=(raw.dni??"").trim(),cargo=clean(raw.cargo??"",120);
-      if (!nombre || !cargo || !/^\d{8,12}$/.test(dni)) { issues.push({row:rowNumber,code,message:"Revisa nombre, cargo y DNI (8 a 12 dígitos).",action:"error"}); return; }
-      rows.push({codigo_personal:code,nombre,dni,cargo,activo:active});
-    }
-    if (existing.has(code)) actualizados++; else nuevos++;
-  });
-  const preview:ImportPreview={rows,issues,nuevos,actualizados,omitidos:issues.filter(i=>i.action==="omitido").length,errores:issues.filter(i=>i.action==="error").length};
-  return { parsed, preview };
-}

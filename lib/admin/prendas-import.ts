@@ -38,7 +38,7 @@ export type PrendasPayload = z.infer<typeof prendasPayloadSchema>;
 export class ImportInputError extends Error {}
 
 // "Renovación" y "renovacion", "Género" y "genero": misma columna.
-const headerKey = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+export const headerKey = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 // Quita espacios sobrantes (también los no separables, p. ej. "UNF1 ") antes de validar o comparar.
 export const cleanCell = (value: string | undefined) => (value ?? "").replace(/[   ]/g, " ").trim();
 const noControl = (text: string) => !/[\u0000-\u001f]/.test(text);
