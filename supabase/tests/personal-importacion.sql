@@ -22,7 +22,7 @@ update public.profiles set role='admin' where id='a1000000-0000-4000-8000-000000
 update public.profiles set role='coordinador' where id='a1000000-0000-4000-8000-000000000002';
 update public.profiles set role='agente' where id='a1000000-0000-4000-8000-000000000003';
 insert into public.clientes(id,nombre,activo) values ('a2000000-0000-4000-8000-000000000001','RENIEC',true);
--- Personal ya cargado (RENIEC / INDECOPI): P1 normal, P2 con DNI guardado sin el cero inicial, P3 agente vinculado a Google,
+-- Personal ya cargado (RENIEC / INDECOPI): P1 normal, P2 con DNI mal guardado (7 dígitos: ya no se empareja ni se completa), P3 agente vinculado a Google,
 -- D1/D2 con el mismo DNI (no hay restricción única), P5 persona que no viene en el archivo.
 insert into public.personal(id,codigo_personal,nombre,dni,cargo,activo) values
  ('a3000000-0000-4000-8000-000000000001','R-1','ANA PEREZ','12345678','AGENTE',true),
@@ -48,14 +48,13 @@ select set_config('qa.filas','[
 select set_config('qa.prev',public.admin_importar_personal(current_setting('qa.filas')::jsonb,false)::text,true);
 select pg_temp.ok((current_setting('qa.prev')::jsonb->>'nuevos')::int=1,'vista previa: 1 persona nueva (DNI 44444444)');
 select pg_temp.ok((current_setting('qa.prev')::jsonb->>'sin_cambios')::int=1,'vista previa: 1 existente con los mismos datos (ANA PEREZ; el nombre solo difiere en mayúsculas/espacios)');
-select pg_temp.ok(jsonb_array_length(current_setting('qa.prev')::jsonb->'diferencias')=2,'vista previa: 2 existentes con diferencias (filas 4 y 5)');
-select pg_temp.ok(current_setting('qa.prev')::jsonb->'diferencias'->0->>'fila'='4' and current_setting('qa.prev')::jsonb->'diferencias'->0->'cambios'->0->>'campo'='dni'
-  and current_setting('qa.prev')::jsonb->'diferencias'->0->'cambios'->0->>'actual'='1234567' and current_setting('qa.prev')::jsonb->'diferencias'->0->'cambios'->0->>'archivo'='01234567','DNI guardado sin cero (1234567) se empareja con 01234567 y se informa la diferencia');
-select pg_temp.ok(current_setting('qa.prev')::jsonb->'diferencias'->1->>'fila'='5' and (current_setting('qa.prev')::jsonb->'diferencias'->1->>'vinculado')::boolean
-  and (select count(*)=2 from jsonb_array_elements(current_setting('qa.prev')::jsonb->'diferencias'->1->'cambios') c where c->>'campo' in ('codigo_personal','nombre')),'el agente vinculado aparece con su valor actual y el del archivo (código y nombre)');
-select pg_temp.ok(jsonb_array_length(current_setting('qa.prev')::jsonb->'errores')=2
+select pg_temp.ok(jsonb_array_length(current_setting('qa.prev')::jsonb->'diferencias')=1 and current_setting('qa.prev')::jsonb->'diferencias'->0->>'fila'='5','vista previa: 1 existente con diferencias (fila 5); el DNI 01234567 NO se empareja con 1234567');
+select pg_temp.ok(current_setting('qa.prev')::jsonb->'diferencias'->0->>'fila'='5' and (current_setting('qa.prev')::jsonb->'diferencias'->0->>'vinculado')::boolean
+  and (select count(*)=2 from jsonb_array_elements(current_setting('qa.prev')::jsonb->'diferencias'->0->'cambios') c where c->>'campo' in ('codigo_personal','nombre')),'el agente vinculado aparece con su valor actual y el del archivo (código y nombre)');
+select pg_temp.ok(jsonb_array_length(current_setting('qa.prev')::jsonb->'errores')=3
+  and (select bool_or(e->>'fila'='4' and e->>'mensaje' like '%ya pertenece a otra persona (DNI 1234567)%') from jsonb_array_elements(current_setting('qa.prev')::jsonb->'errores') e)
   and (select bool_or(e->>'fila'='6' and e->>'mensaje' like '%repetido en la base%') from jsonb_array_elements(current_setting('qa.prev')::jsonb->'errores') e)
-  and (select bool_or(e->>'fila'='7' and e->>'mensaje' like '%ya pertenece a otra persona (DNI 99999999)%') from jsonb_array_elements(current_setting('qa.prev')::jsonb->'errores') e),'errores con su fila: DNI repetido en la base (6) y código que pertenece a otro DNI (7)');
+  and (select bool_or(e->>'fila'='7' and e->>'mensaje' like '%ya pertenece a otra persona (DNI 99999999)%') from jsonb_array_elements(current_setting('qa.prev')::jsonb->'errores') e),'errores con su fila: código de quien tiene DNI mal guardado (4), DNI repetido en la base (6) y código que pertenece a otro DNI (7)');
 select pg_temp.ok((select count(*)=6 from public.personal),'la vista previa no escribe nada');
 
 \echo '--- aplicar: por defecto "Mantener actual" ---'
@@ -87,7 +86,7 @@ select pg_temp.ok((public.admin_importar_personal(current_setting('qa.grande')::
 select pg_temp.denied(format($q$select public.admin_importar_personal('%s'::jsonb,false)$q$,(select jsonb_agg(jsonb_build_object('fila',g+1,'codigo_personal','X-'||g,'nombre','N','dni',lpad(g::text,8,'0'),'activo',true)) from generate_series(1,5001) g)),'22023','más de 5000 filas se rechaza');
 
 \echo '--- validaciones y permisos ---'
-select pg_temp.denied('select public.admin_importar_personal(''[{"fila":2,"codigo_personal":"A","nombre":"N","dni":"1234567","activo":true}]'',false)','22023','DNI de 7 dígitos (sin completar) se rechaza: la pantalla lo completa antes');
+select pg_temp.denied('select public.admin_importar_personal(''[{"fila":2,"codigo_personal":"A","nombre":"N","dni":"1234567","activo":true}]'',false)','22023','DNI de 7 dígitos se rechaza (la base tampoco completa ceros)');
 select pg_temp.denied('select public.admin_importar_personal(''[{"fila":2,"codigo_personal":"A","nombre":"N","dni":"12A45678","activo":true}]'',false)','22023','DNI con letras se rechaza');
 select pg_temp.denied('select public.admin_importar_personal(''[{"fila":2,"codigo_personal":"A","nombre":"N","dni":"70000001","activo":true},{"fila":3,"codigo_personal":"B","nombre":"M","dni":"70000001","activo":true}]'',false)','22023','DNI repetido dentro del archivo (guardia del servidor)');
 select pg_temp.denied('select public.admin_importar_personal(''[{"fila":2,"codigo_personal":"A","nombre":"N","dni":"70000001","activo":true},{"fila":3,"codigo_personal":"A","nombre":"M","dni":"70000002","activo":true}]'',false)','22023','código repetido dentro del archivo (guardia del servidor)');
@@ -99,5 +98,16 @@ select set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000002'
 select pg_temp.denied('select public.admin_importar_personal(''[{"fila":2,"codigo_personal":"N-1","nombre":"X","dni":"70000010","activo":true}]'',true)','42501','un coordinador no puede importar personal');
 reset role;
 select pg_temp.denied($q$set local role anon; select public.admin_importar_personal('[]',false)$q$,'42501','anon no puede ejecutar la RPC');
+
+\echo '--- DNI duplicado activo/inactivo: se usa el registro activo ---'
+reset role;
+insert into public.personal(id,codigo_personal,nombre,dni,cargo,activo) values
+ ('a3000000-0000-4000-8000-000000000011','T-ACT','GEMELO ACTIVO','66666666','AGENTE',true),
+ ('a3000000-0000-4000-8000-000000000012','T-INA','GEMELO INACTIVO','66666666','AGENTE',false);
+set local role authenticated;
+select set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000001',true);
+select set_config('qa.gem',public.admin_importar_personal('[{"fila":2,"codigo_personal":"T-ACT","nombre":"GEMELO ACTIVO DIAZ","dni":"66666666","activo":true}]',false)::text,true);
+select pg_temp.ok((current_setting('qa.gem')::jsonb->>'nuevos')::int=0 and jsonb_array_length(current_setting('qa.gem')::jsonb->'errores')=0
+  and jsonb_array_length(current_setting('qa.gem')::jsonb->'diferencias')=1 and current_setting('qa.gem')::jsonb->'diferencias'->0->>'nombre'='GEMELO ACTIVO','con un activo y un inactivo del mismo DNI se compara con el activo (sin error)');
 
 rollback;

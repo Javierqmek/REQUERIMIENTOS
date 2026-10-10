@@ -73,6 +73,9 @@ select public.admin_actualizar_catalogo_activo('personal',(select id from public
 select public.admin_actualizar_catalogo_activo('personal',(select id from public.personal where codigo_personal='CRUD-P1'),true);
 select pg_temp.ok(exists(select 1 from public.personal where codigo_personal='CRUD-P1' and nombre='Persona Editada' and activo),'crea edita y cambia estado de personal');
 
+select pg_temp.denied($q$select public.admin_guardar_catalogo('personal',null,'{"codigo_personal":"CRUD-P7","nombre":"X","dni":"1234567","cargo":"Agente"}')$q$);
+select pg_temp.denied($q$select public.admin_guardar_catalogo('personal',null,'{"codigo_personal":"CRUD-P9","nombre":"X","dni":"123456789","cargo":"Agente"}')$q$);
+select pg_temp.denied($q$select public.admin_guardar_catalogo('personal',(select id from public.personal where codigo_personal='CRUD-P1'),'{"codigo_personal":"CRUD-P1","nombre":"X","dni":"1234567","cargo":"Agente"}')$q$);
 select public.admin_guardar_catalogo('prendas',null,'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Nueva","codigo_almacen":"ALM-2","precio":35.50,"asignaciones":[{"cliente_id":"58000000-0000-4000-8000-000000000001","renovacion":"AMBOS","genero":"HOMBRE","cantidad":3,"activo":true}]}');
 select public.admin_guardar_catalogo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),'{"codigo_prenda":"CRUD-G1","nombre_prenda":"Prenda Editada","codigo_almacen":"ALM-3","precio":40}');
 select public.admin_actualizar_catalogo_activo('prendas',(select id from public.prendas where codigo_prenda='CRUD-G1'),false);

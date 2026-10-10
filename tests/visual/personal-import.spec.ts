@@ -15,7 +15,7 @@ async function preview(page: Page) {
   return (await request).postDataJSON();
 }
 
-test("Personal: CSV de Excel con ; y BOM se lee, ignora filas vacías y avisa DNI completados", async ({ page }) => {
+test("Personal: CSV de Excel con ; y BOM se lee, ignora filas vacías y no completa ceros", async ({ page }) => {
   await load(page);
   await expect(page.getByText("filas listas para validar")).toBeVisible();
   await expect(page.locator("strong", { hasText: /^3$/ })).toBeVisible();
@@ -25,10 +25,7 @@ test("Personal: CSV de Excel con ; y BOM se lee, ignora filas vacías y avisa DN
   expect(body.rows).toHaveLength(3);
   expect(body.rows[1].dni).toBe("1234567");
   expect(body.filas).toEqual([2, 4, 5]);
-  const done = page.getByTestId("dni-completados");
-  await expect(done.getByText("DNI completado (1)")).toBeVisible();
-  await expect(done.getByText("Fila 4 · S-2 · 1234567 → 01234567")).toBeVisible();
-  for (const label of ["Nuevos", "Existentes sin cambios", "Existentes con diferencias", "DNIs completados", "Errores"]) await expect(page.getByText(label, { exact: true })).toBeVisible();
+  for (const label of ["Nuevos", "Existentes sin cambios", "Existentes con diferencias", "Errores"]) await expect(page.getByText(label, { exact: true })).toBeVisible();
 });
 
 test("Personal: Windows-1252 conserva tildes y ñ", async ({ page }) => {
@@ -95,6 +92,9 @@ test("Personal: los errores indican la fila del archivo", async ({ page }) => {
   await preview(page);
   await expect(page.getByText("Fila 9", { exact: true })).toBeVisible();
   await expect(page.getByText(/El código S-9 ya pertenece a otra persona \(DNI 99999999\)/)).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar errores (CSV)" }).click();
+  expect((await download).suggestedFilename()).toBe("errores-importacion.csv");
 });
 
 for (const [width, height] of responsiveViewports) test(`Personal: vista previa sin desbordes ${width}x${height}`, async ({ page }) => {
@@ -103,4 +103,10 @@ for (const [width, height] of responsiveViewports) test(`Personal: vista previa 
   await preview(page);
   await expect(page.getByTestId("diferencias-personal")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("Personal: aconseja el formato 00000000 para los DNI", async ({ page }) => {
+  await load(page);
+  await expect(page.getByText(/Si Excel borra los ceros iniciales, da formato personalizado/)).toBeVisible();
+  await expect(page.getByText(/la plataforma no completa ceros/)).toBeVisible();
 });

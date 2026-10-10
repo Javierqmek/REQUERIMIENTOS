@@ -13,8 +13,8 @@ const names: Record<CatalogKind,string> = {
   clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda", provincias:"provincia",
 };
 function text(row:Row|null,key:string){return row?.[key]===undefined||row?.[key]===null?"":String(row[key])}
-function Field({label,name,defaultValue="",maxLength,type="text",readOnly=false,min,max,step}:{label:string;name:string;defaultValue?:string;maxLength?:number;type?:string;readOnly?:boolean;min?:number;max?:number;step?:number}){
-  return <label><span className="label">{label}</span><input className="input" name={name} type={type} maxLength={maxLength} defaultValue={defaultValue} readOnly={readOnly} min={min} max={max} step={step} required/></label>;
+function Field({label,name,defaultValue="",maxLength,type="text",readOnly=false,min,max,step,inputMode,pattern,title}:{inputMode?:"numeric";pattern?:string;title?:string;label:string;name:string;defaultValue?:string;maxLength?:number;type?:string;readOnly?:boolean;min?:number;max?:number;step?:number}){
+  return <label><span className="label">{label}</span><input className="input" name={name} type={type} maxLength={maxLength} defaultValue={defaultValue} readOnly={readOnly} inputMode={inputMode} pattern={pattern} title={title} min={min} max={max} step={step} required/></label>;
 }
 export function AdminCatalogDialog({catalog,row,clients,busy,error,esSuperadmin=false,onCancel,onSubmit}:{
   catalog:CatalogKind; row:Row|null; clients:ClientOption[]; busy:boolean; error:string; esSuperadmin?:boolean;
@@ -69,7 +69,7 @@ export function AdminCatalogDialog({catalog,row,clients,busy,error,esSuperadmin=
           </>}
           {catalog==="personal"&&<>
             <Field label="Código de personal" name="codigo_personal" maxLength={80} defaultValue={text(row,"codigo_personal")} readOnly={editing}/>
-            <Field label="DNI" name="dni" maxLength={12} defaultValue={text(row,"dni")} />
+            <Field label="DNI" name="dni" maxLength={8} inputMode="numeric" pattern="[0-9]{8}" title="Exactamente 8 dígitos" defaultValue={text(row,"dni")} />
             <div className="sm:col-span-2"><Field label="Nombre completo" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>
             <div className="sm:col-span-2"><Field label="Cargo" name="cargo" maxLength={120} defaultValue={text(row,"cargo")}/></div>
           </>}

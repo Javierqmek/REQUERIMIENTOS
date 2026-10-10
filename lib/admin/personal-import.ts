@@ -3,8 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cleanCell, ImportInputError } from "./prendas-import";
 import type { ImportIssue } from "./maintenance";
 
-// Importación de personal por DNI. La pantalla limpia y valida cada fila (con su número de fila), completa los DNI a los que
-// Excel les quitó ceros y detecta repetidos dentro del archivo; la base (RPC admin_importar_personal) compara contra lo
+// Importación de personal por DNI. La pantalla limpia y valida cada fila (con su número de fila), exige DNI de exactamente 8 dígitos (nunca completa ceros) y detecta repetidos dentro del archivo; la base (RPC admin_importar_personal) compara contra lo
 // guardado y aplica en una sola transacción. Nunca modifica profile_id, email ni la vinculación de agentes.
 export const PERSONAL_REQUIRED_HEADERS = ["codigo_personal", "nombre", "dni", "activo"] as const;
 export const PERSONAL_OPTIONAL_HEADERS = ["cargo"] as const;
@@ -15,10 +14,9 @@ export type PersonalPreview = {
   diferencias: { fila: number; dni: string; nombre: string; codigo_personal: string; vinculado: boolean; cambios: { campo: string; actual: string; archivo: string }[] }[];
   errores: { fila: number; codigo: string; mensaje: string }[];
 };
-export type DniCompletado = { fila: number; codigo: string; original: string; dni: string };
 export type PersonalImportPreview = {
   rows: Record<string, unknown>[]; issues: ImportIssue[]; nuevos: number; actualizados: number; omitidos: number; errores: number;
-  personal: PersonalPreview; dniCompletados: DniCompletado[];
+  personal: PersonalPreview;
 };
 
 export const personalPayloadSchema = z.object({
@@ -41,13 +39,13 @@ export function checkPersonalHeaders(headers: string[]) {
 }
 export function hasCargoColumn(headers: string[]) { return headers.some(h => headerKey(h) === "cargo"); }
 
-// El DNI siempre es texto. Si viene solo con números y menos de 8 dígitos (Excel quitó los ceros), se completa a la izquierda.
-export function normalizeDni(value: string | undefined): { dni: string; completado: boolean } | { error: string } {
+// El DNI siempre es texto y debe tener exactamente 8 dígitos (todo el personal es peruano): no se completan ceros.
+export function checkDni(value: string | undefined): { dni: string } | { error: string } {
   const text = cleanCell(value).replace(/^'/, "");
   if (!text) return { error: "DNI vacío." };
-  if (/^\d{8}$/.test(text)) return { dni: text, completado: false };
-  if (/^\d{1,7}$/.test(text)) return { dni: text.padStart(8, "0"), completado: true };
-  return { error: `DNI inválido "${text}": debe tener 8 dígitos (solo números).` };
+  if (/^\d{8}$/.test(text)) return { dni: text };
+  if (/^\d+$/.test(text)) return { error: `DNI con ${text.length} dígitos: ${text}` };
+  return { error: `DNI con caracteres no numéricos: ${text}` };
 }
 const booleanValue = (value: string) => {
   const normalized = cleanCell(value).toLowerCase();
@@ -60,25 +58,24 @@ const noControl = (text: string) => !/[\u0000-\u001f]/.test(text);
 type Row = { fila: number; codigo_personal: string; nombre: string; dni: string; cargo: string | null; activo: boolean };
 
 export function validatePersonalRows(rows: Record<string, string>[], filas?: number[]) {
-  const issues: ImportIssue[] = []; const valid: Row[] = []; const dniCompletados: DniCompletado[] = [];
+  const issues: ImportIssue[] = []; const valid: Row[] = [];
   rows.forEach((raw, index) => {
     const fila = filas?.[index] ?? index + 2;
     const r = Object.fromEntries(Object.entries(raw).map(([name, value]) => [headerKey(name), cleanCell(value)]));
     const codigo = r.codigo_personal ?? "";
-    const fail = (message: string) => issues.push({ row: fila, code: codigo || r.dni || "—", message, action: "error" });
+    const fail = (message: string) => issues.push({ row: fila, code: codigo || r.dni || "—", message, action: "error", nombre: (r.nombre ?? "").replace(/\s+/g, " "), dni: r.dni ?? "" });
     if (!codigo || codigo.length > 80 || !noControl(codigo)) return fail("codigo_personal es obligatorio o demasiado largo.");
     const nombre = (r.nombre ?? "").replace(/\s+/g, " ");
     if (!nombre || nombre.length > 200 || !noControl(nombre)) return fail("nombre es obligatorio o demasiado largo.");
-    const dni = normalizeDni(r.dni);
+    const dni = checkDni(r.dni);
     if ("error" in dni) return fail(dni.error);
     const activo = booleanValue(r.activo ?? "");
     if (activo === null) return fail("activo debe ser true/false, sí/no o 1/0.");
     const cargo = r.cargo ? r.cargo : null;
     if (cargo && (cargo.length > 120 || !noControl(cargo))) return fail("cargo es demasiado largo.");
-    if (dni.completado) dniCompletados.push({ fila, codigo, original: r.dni, dni: dni.dni });
     valid.push({ fila, codigo_personal: codigo, nombre, dni: dni.dni, cargo, activo });
   });
-  return { valid, issues, dniCompletados };
+  return { valid, issues };
 }
 
 // DNI o código repetidos DENTRO del archivo: se marcan todas las filas implicadas (con sus números) y no se importan.
@@ -102,15 +99,16 @@ const emptyPreview = (): PersonalPreview => ({ aplicado: false, nuevos: 0, sin_c
 export async function preparePersonalImport(db: SupabaseClient, input: unknown) {
   const parsed = personalPayloadSchema.parse(input);
   checkPersonalHeaders(parsed.headers);
-  const { valid, issues, dniCompletados } = validatePersonalRows(parsed.rows, parsed.filas);
+  const { valid, issues } = validatePersonalRows(parsed.rows, parsed.filas);
   const file = checkPersonalFile(valid);
   const tsIssues = [...issues, ...file.issues];
   const finish = (personal: PersonalPreview): PersonalImportPreview => {
     const dbIssues: ImportIssue[] = personal.errores.map(e => ({ row: e.fila, code: e.codigo, message: e.mensaje, action: "error" }));
-    const all = [...tsIssues, ...dbIssues].sort((a, b) => a.row - b.row || a.message.localeCompare(b.message));
+    const byRow = new Map(file.ok.map(r => [r.fila, r] as const));
+    const all = [...tsIssues, ...dbIssues].map(i => ({ ...i, nombre: i.nombre ?? byRow.get(i.row)?.nombre, dni: i.dni ?? byRow.get(i.row)?.dni })).sort((a, b) => a.row - b.row || a.message.localeCompare(b.message));
     const flagged = new Set(all.map(i => i.row));
     return { rows: file.ok, issues: all, nuevos: personal.nuevos, actualizados: personal.aplicado ? personal.actualizados : personal.diferencias.length, omitidos: personal.sin_cambios,
-      errores: flagged.size, personal, dniCompletados: dniCompletados.filter(item => !flagged.has(item.fila)) };
+      errores: flagged.size, personal };
   };
   if (!file.ok.length) return { parsed, preview: finish(emptyPreview()) };
   // Sin columna cargo, las personas nuevas se crean con el cargo por defecto; con ella, se usa el de cada fila.

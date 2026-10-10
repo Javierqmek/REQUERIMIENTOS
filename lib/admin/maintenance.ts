@@ -44,7 +44,7 @@ const unitValues = z.object({
 }).strict();
 const personValues = z.object({
   codigo_personal: shortText(80, "El código"), nombre: shortText(200, "El nombre"),
-  dni: z.string().trim().regex(/^\d{8,12}$/, "El DNI debe tener entre 8 y 12 dígitos."),
+  dni: z.string().trim().regex(/^\d{8}$/, "El DNI debe tener exactamente 8 dígitos."),
   cargo: shortText(120, "El cargo"),
 }).strict();
 const garmentValues = z.object({
@@ -90,5 +90,5 @@ export const IMPORT_HEADERS: Record<ImportKind, readonly string[]> = {
   prendas: ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "genero", "renovacion", "activo"],
 };
 export type RawImport = { kind: ImportKind; headers: string[]; rows: Record<string, string>[] };
-export type ImportIssue = { row: number; code: string; message: string; action: "error" | "omitido" };
+export type ImportIssue = { row: number; code: string; message: string; action: "error" | "omitido"; nombre?: string; dni?: string };
 export type ImportPreview = { rows: Record<string, unknown>[]; issues: ImportIssue[]; nuevos: number; actualizados: number; omitidos: number; errores: number };
