@@ -33,7 +33,7 @@ export function EditRequirement({ initial, profile }: { initial: EditPayload; pr
   const [conflict, setConflict] = useState(false);
   const savingRef = useRef(false);
   // La renovación del requerimiento no se edita: solo prendas asignadas a su cliente para esa renovación (o AMBOS).
-  const garments = useClientGarments(db, allowed && Boolean(row.cliente_id && row.clientes?.nombre && gender) && !success, row.cliente_id, row.renovacion);
+  const garments = useClientGarments(db, allowed && Boolean(row.cliente_id && row.clientes?.nombre && gender) && !success, row.cliente_id, row.renovacion, row.puesto_id ?? null);
   const visibleGarments = garments.rows.filter(garment => gender && garmentFits(garment, row.renovacion, gender));
   const choices = garmentChoices(visibleGarments, lines.map(line => line.prenda_id));
   const chosen = visibleGarments.find(p => p.id === selected);

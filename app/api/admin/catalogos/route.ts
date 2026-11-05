@@ -14,6 +14,7 @@ function failure(error:unknown,fallback:string){
   const issue=error as {code?:string;message?:string};
   if(issue.code==="42501")return response({error:"No autorizado"},403);
   if(issue.code==="P0002")return response({error:issue.message??"Registro no encontrado."},404);
+  if(issue.code==="22023")return response({error:issue.message??fallback},400);
   if(issue.code==="23505"||issue.code==="55000"||issue.code==="23503"||issue.code==="23P01")return response({error:issue.message??fallback},409);
   return response({error:fallback},400);
 }

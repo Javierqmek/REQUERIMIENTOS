@@ -10,6 +10,7 @@ export type AdminResult = { rows: AdminRow[]; total: number; duplicateTotal: num
 export type AdminOptions = {
   clientes: { id: string; nombre: string }[];
   unidades: { id: string; cliente_id: string; nombre: string }[];
+  puestos?: { id: string; cliente_id: string; nombre: string }[];
   coordinadores: { id: string; nombre: string; email: string }[];
 };
 export type SidigeDetail = {

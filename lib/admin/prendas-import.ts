@@ -7,7 +7,7 @@ import type { ImportIssue } from "./maintenance";
 // La pantalla limpia y valida cada fila (con su número) y detecta repetidos dentro del archivo; la base
 // (RPC admin_importar_prendas) compara contra lo guardado y aplica, y vuelve a exigir todo.
 export const PRENDAS_REQUIRED_HEADERS = ["codigo_prenda", "nombre_prenda", "codigo_almacen", "precio", "cantidad", "genero", "renovacion", "activo"] as const;
-export const PRENDAS_OPTIONAL_HEADERS = ["cliente"] as const;
+export const PRENDAS_OPTIONAL_HEADERS = ["cliente", "puesto"] as const;
 
 export const ALCANCES = ["ahora", "tramite", "todos"] as const;
 export type Alcance = (typeof ALCANCES)[number];
@@ -18,7 +18,7 @@ export type PrendasPreview = {
   // Alertas de ficha: solo precio, nombre y código de almacén (el género es de la asignación del cliente).
   alertas: { codigo: string; nombre: string; cambios: { campo: string; actual: string; archivo: string }[]; impacto: Impacto | null }[];
   renovaciones_actualizadas: { codigo: string; nombre: string; de: string; a: string }[];
-  desactivar: { codigo: string; nombre: string; renovacion: string; cantidad: number }[];
+  desactivar: { codigo: string; nombre: string; renovacion: string; cantidad: number; puesto?: string | null }[];
   fichas_inactivas: string[];
   cambios_ficha: { codigo: string; alcance: Alcance; requerimientos: number; lineas: number }[];
 };
@@ -40,13 +40,14 @@ export class ImportInputError extends Error {}
 // "Renovación" y "renovacion", "Género" y "genero": misma columna.
 export const headerKey = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 // Quita espacios sobrantes (también los no separables, p. ej. "UNF1 ") antes de validar o comparar.
-export const cleanCell = (value: string | undefined) => (value ?? "").replace(/[   ]/g, " ").trim();
+// Los códigos exportados como ="0012" (para que Excel no les quite los ceros) se leen sin el envoltorio.
+export const cleanCell = (value: string | undefined) => (value ?? "").replace(/[   ]/g, " ").trim().replace(/^="(.*)"$/, "$1").trim();
 const noControl = (text: string) => !/[\u0000-\u001f]/.test(text);
 
 function booleanValue(value: string) {
   const normalized = cleanCell(value).toLowerCase();
-  if (["true", "1", "si", "sí"].includes(normalized)) return true;
-  if (["false", "0", "no"].includes(normalized)) return false;
+  if (["true", "1", "si", "sí", "verdadero"].includes(normalized)) return true;
+  if (["false", "0", "no", "falso"].includes(normalized)) return false;
   return null;
 }
 export function normalizeGenero(value: string | undefined) {
@@ -69,7 +70,7 @@ export function parsePrecio(value: string | undefined) {
   return /^\d+(\.\d{1,2})?$/.test(text) ? Number(text) : null;
 }
 
-type Row = { fila: number; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string; precio: number; cantidad: number; genero: string; renovacion: string; activo: boolean };
+type Row = { fila: number; puesto: string | null; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string; precio: number; cantidad: number; genero: string; renovacion: string; activo: boolean };
 
 export function checkPrendasHeaders(headers: string[]) {
   const keys = headers.map(headerKey);
@@ -79,12 +80,16 @@ export function checkPrendasHeaders(headers: string[]) {
   }
 }
 
-export function validatePrendasRows(rows: Record<string, string>[], clienteNombre: string, filas?: number[]) {
+// puestos: catálogo del cliente cuando diferencia prendas por puesto (usa=true); sin él, la columna puesto debe venir vacía.
+export type PuestosContext = { usa: boolean; puestos: { nombre: string; activo: boolean }[] };
+export function validatePrendasRows(rows: Record<string, string>[], clienteNombre: string, filas?: number[], contexto: PuestosContext = { usa: false, puestos: [] }) {
   const issues: ImportIssue[] = []; const valid: Row[] = [];
   rows.forEach((raw, index) => {
     const fila = filas?.[index] ?? index + 2; const r = Object.fromEntries(Object.entries(raw).map(([name, value]) => [headerKey(name), cleanCell(value)]));
     const codigo = r.codigo_prenda ?? "";
     const fail = (message: string) => issues.push({ row: fila, code: codigo || "—", message, action: "error" });
+    // Fila de la exportación para una prenda sin asignación (columna cliente presente pero vacía, y sin cantidad, género ni renovación): no hay nada que importar.
+    if (codigo && "cliente" in r && !r.cliente && !r.puesto && !r.cantidad && !r.genero && !r.renovacion) return;
     if (!codigo || codigo.length > 80 || !noControl(codigo)) return fail("codigo_prenda es obligatorio o demasiado largo.");
     if (r.cliente && r.cliente.toLowerCase() !== clienteNombre.trim().toLowerCase()) {
       return fail(`La fila es del cliente "${r.cliente}" pero este archivo se importa para "${clienteNombre}". Importa un archivo por cliente.`);
@@ -101,7 +106,17 @@ export function validatePrendasRows(rows: Record<string, string>[], clienteNombr
     const precio = parsePrecio(r.precio);
     if (precio === null) return fail(`Precio inválido "${r.precio ?? ""}": usa un número con hasta dos decimales (también se acepta S/ 1,250.50).`);
     if (!/^[1-9]\d{0,4}$/.test(r.cantidad ?? "") || Number(r.cantidad) > 10000) return fail(`Cantidad inválida "${r.cantidad ?? ""}": usa un entero entre 1 y 10000.`);
-    valid.push({ fila, codigo_prenda: codigo, nombre_prenda: nombre, codigo_almacen: almacen, precio, cantidad: Number(r.cantidad), genero, renovacion, activo });
+    let puesto: string | null = null;
+    if (contexto.usa) {
+      if (!r.puesto) return fail(`puesto es obligatorio: ${clienteNombre} diferencia prendas por puesto.`);
+      const found = contexto.puestos.find(p => p.nombre.trim().toLowerCase() === r.puesto.toLowerCase());
+      if (!found) return fail(`El puesto "${r.puesto}" no existe en el catálogo de ${clienteNombre} (Mantenimiento → Puestos).`);
+      if (!found.activo && activo) return fail(`El puesto "${r.puesto}" está inactivo: actívalo en Mantenimiento o marca la fila como inactiva.`);
+      puesto = found.nombre;
+    } else if (r.puesto) {
+      return fail(`${clienteNombre} no diferencia prendas por puesto: deja la columna puesto vacía (fila con puesto "${r.puesto}").`);
+    }
+    valid.push({ fila, puesto, codigo_prenda: codigo, nombre_prenda: nombre, codigo_almacen: almacen, precio, cantidad: Number(r.cantidad), genero, renovacion, activo });
   });
   return { valid, issues };
 }
@@ -113,13 +128,19 @@ export function checkPrendasFile(valid: Row[]) {
   const byCode = new Map<string, Row[]>();
   for (const row of valid) byCode.set(row.codigo_prenda, [...(byCode.get(row.codigo_prenda) ?? []), row]);
   for (const [code, rows] of byCode) {
-    const byRenovacion = new Map<string, Row[]>();
-    for (const row of rows) byRenovacion.set(row.renovacion, [...(byRenovacion.get(row.renovacion) ?? []), row]);
-    for (const [renovacion, same] of byRenovacion) if (same.length > 1) {
-      for (const row of same) flag(row, `${code} con renovación ${renovacion} está repetido en las filas ${same.map(s => s.fila).join(" y ")}. Deja una sola fila por código y renovación.`);
-    }
-    if (byRenovacion.has("AMBOS") && byRenovacion.size > 1) {
-      for (const row of rows) if (!bad.has(row.fila)) flag(row, `${code} combina AMBOS con VERANO o INVIERNO (filas ${rows.map(s => s.fila).join(", ")}). Usa AMBOS solo, o una fila por renovación.`);
+    // La misma prenda puede estar en varios puestos (con distinta cantidad): renovación y AMBOS se revisan dentro de cada puesto.
+    const byPuesto = new Map<string, Row[]>();
+    for (const row of rows) byPuesto.set(row.puesto ?? "", [...(byPuesto.get(row.puesto ?? "") ?? []), row]);
+    for (const [puesto, inPuesto] of byPuesto) {
+      const where = puesto ? ` en el puesto "${puesto}"` : "";
+      const byRenovacion = new Map<string, Row[]>();
+      for (const row of inPuesto) byRenovacion.set(row.renovacion, [...(byRenovacion.get(row.renovacion) ?? []), row]);
+      for (const [renovacion, same] of byRenovacion) if (same.length > 1) {
+        for (const row of same) flag(row, `${code} con renovación ${renovacion}${where} está repetido en las filas ${same.map(s => s.fila).join(" y ")}. Deja una sola fila por código${puesto ? ", puesto" : ""} y renovación.`);
+      }
+      if (byRenovacion.has("AMBOS") && byRenovacion.size > 1) {
+        for (const row of inPuesto) if (!bad.has(row.fila)) flag(row, `${code} combina AMBOS con VERANO o INVIERNO${where} (filas ${inPuesto.map(s => s.fila).join(", ")}). Usa AMBOS solo, o una fila por renovación.`);
+      }
     }
     // Datos de ficha (el género NO: va en la asignación de cada cliente y puede variar por renovación).
     for (const [campo, label] of [["precio", "precio"], ["nombre_prenda", "nombre"], ["codigo_almacen", "código de almacén"]] as const) {
@@ -139,10 +160,16 @@ const emptyPreview = (cliente: string): PrendasPreview => ({ aplicado: false, cl
 export async function preparePrendasImport(db: SupabaseClient, input: unknown) {
   const parsed = prendasPayloadSchema.parse(input);
   checkPrendasHeaders(parsed.headers);
-  const { data: client, error: clientError } = await db.from("clientes").select("nombre,activo").eq("id", parsed.cliente_id).maybeSingle();
+  const { data: client, error: clientError } = await db.from("clientes").select("nombre,activo,diferencia_puestos").eq("id", parsed.cliente_id).maybeSingle();
   if (clientError) throw new Error("No se pudo validar el cliente.");
   if (!client || client.activo === false) throw new z.ZodError([{ code: "custom", path: ["cliente_id"], message: "El cliente no existe o está inactivo." }]);
-  const { valid, issues } = validatePrendasRows(parsed.rows, String(client.nombre), parsed.filas);
+  let contexto: PuestosContext = { usa: false, puestos: [] };
+  if (client.diferencia_puestos === true) {
+    const { data: puestos, error: puestosError } = await db.from("puestos").select("nombre,activo").eq("cliente_id", parsed.cliente_id).limit(1000);
+    if (puestosError) throw new Error("No se pudieron validar los puestos del cliente.");
+    contexto = { usa: true, puestos: (puestos ?? []) as PuestosContext["puestos"] };
+  }
+  const { valid, issues } = validatePrendasRows(parsed.rows, String(client.nombre), parsed.filas, contexto);
   const file = checkPrendasFile(valid);
   const all = [...issues, ...file.issues].sort((a, b) => a.row - b.row);
   const finish = (prendas: PrendasPreview): PrendasImportPreview => {

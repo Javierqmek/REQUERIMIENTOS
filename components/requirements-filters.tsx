@@ -11,12 +11,14 @@ export function RequirementsFilters({value,options,disabled,dirty,onChange,onApp
   onChange:(value:RequirementFilters)=>void;onApply:()=>void;onClear:()=>void;
 }){
   const units=value.cliente?options.unidades.filter(unit=>unit.cliente_id===value.cliente):options.unidades;
-  const change=(key:keyof RequirementFilters,next:string)=>onChange({...value,[key]:next,...(key==="cliente"?{unidad:""}:{})});
+  const puestos=(options.puestos??[]).filter(row=>!value.cliente||row.cliente_id===value.cliente);
+  const change=(key:keyof RequirementFilters,next:string)=>onChange({...value,[key]:next,...(key==="cliente"?{unidad:"",puesto:""}:{})});
   return <form onSubmit={event=>{event.preventDefault();onApply()}} className="border-t border-[var(--border)] px-4 pb-4 pt-3 sm:px-5">
     <fieldset disabled={disabled} className="min-w-0"><legend className="sr-only">Filtros de mis requerimientos</legend>
       <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div><label className="label" htmlFor="req-cliente">Cliente</label><select id="req-cliente" className="input" value={value.cliente} onChange={event=>change("cliente",event.target.value)}><option value="">Todos los clientes</option>{options.clientes.map(row=><option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div>
         <div><label className="label" htmlFor="req-unidad">Unidad / Sede</label><select id="req-unidad" className="input" value={value.unidad} onChange={event=>change("unidad",event.target.value)}><option value="">Todas las unidades</option>{units.map(row=><option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div>
+        {(options.puestos??[]).length>0&&<div><label className="label" htmlFor="req-puesto">Puesto</label><select id="req-puesto" className="input" value={value.puesto} onChange={event=>change("puesto",event.target.value)}><option value="">Todos los puestos</option>{puestos.map(row=><option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div>}
         <div><label className="label" htmlFor="req-estado">Estado</label><select id="req-estado" className="input" value={value.estado} onChange={event=>change("estado",event.target.value)}><option value="">Todos los estados</option>{ADMIN_STATES.map(state=><option key={state}>{state}</option>)}</select></div>
         <div><label className="label" htmlFor="req-renovacion">Renovación</label><select id="req-renovacion" className="input" value={value.renovacion} onChange={event=>change("renovacion",event.target.value)}><option value="">Todas las renovaciones</option>{RENOVACIONES.map(option=><option value={option} key={option}>{renovacionLabel(option)}</option>)}</select></div>
         <div><label className="label" htmlFor="req-genero">Género de prenda</label><select id="req-genero" className="input" value={value.genero} onChange={event=>change("genero",event.target.value)}><option value="">Todos los géneros</option>{REQUIREMENT_GENDERS.map(gender=><option value={gender} key={gender}>{genderLabel[gender]}</option>)}</select></div>

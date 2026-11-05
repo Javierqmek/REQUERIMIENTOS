@@ -6,7 +6,8 @@ export interface Personal {
   id: string; codigo_personal: string; nombre: string; dni: string; cargo: string;
   activo: boolean;
 }
-export interface Cliente { id: string; nombre: string; activo: boolean }
+export interface Cliente { id: string; nombre: string; activo: boolean; diferencia_puestos?: boolean }
+export interface Puesto { id: string; cliente_id: string; nombre: string; activo: boolean }
 export interface Unidad { id: string; cliente_id: string; nombre: string; renovacion_defecto: import("@/lib/garments/renovacion").Renovacion; activo: boolean }
 export interface Provincia { id: string; nombre: string; activo: boolean }
 export interface Prenda {
@@ -25,8 +26,9 @@ export interface Requerimiento {
   cantidad_prendas?: number;
   unidades_totales?: number;
   generos?: import("@/lib/garments/gender").GarmentGender[];
-  cliente_id: string | null; unidad_id: string | null;
+  cliente_id: string | null; unidad_id: string | null; puesto_id?: string | null;
   clientes: Pick<Cliente, "nombre"> | null;
+  puestos?: Pick<Puesto, "nombre"> | null;
   unidades: Pick<Unidad, "nombre"> | null;
   personal: Pick<Personal, "nombre" | "dni" | "cargo"> | null;
   profiles?: Pick<Profile, "nombre" | "email"> | null;

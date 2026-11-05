@@ -9,13 +9,15 @@ export function AdminFiltersForm({ value, options, disabled, dirty, onChange, on
   onChange: (value: AdminFilters) => void; onApply: () => void; onClear: () => void;
 }) {
   const units = value.cliente ? options.unidades.filter(u => u.cliente_id === value.cliente) : options.unidades;
-  const change = (key: keyof AdminFilters, field: string) => onChange({ ...value, [key]: field, ...(key === "cliente" ? { unidad: "" } : {}) });
+  const puestos = (options.puestos ?? []).filter(p => !value.cliente || p.cliente_id === value.cliente);
+  const change = (key: keyof AdminFilters, field: string) => onChange({ ...value, [key]: field, ...(key === "cliente" ? { unidad: "", puesto: "" } : {}) });
   return <form onSubmit={e => { e.preventDefault(); onApply(); }} className="border-t border-[var(--border)] px-4 pb-4 pt-3 sm:px-5">
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">Filtros de requerimientos</legend>
       <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="min-w-0"><label className="label" htmlFor="admin-cliente">Cliente</label><select className="input" id="admin-cliente" value={value.cliente} onChange={e => change("cliente", e.target.value)}><option value="">Todos los clientes</option>{options.clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
         <div className="min-w-0"><label className="label" htmlFor="admin-unidad">Unidad / Sede</label><select className="input" id="admin-unidad" value={value.unidad} onChange={e => change("unidad", e.target.value)}><option value="">Todas las unidades</option>{units.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>
+        {(options.puestos ?? []).length > 0 && <div className="min-w-0"><label className="label" htmlFor="admin-puesto">Puesto</label><select className="input" id="admin-puesto" value={value.puesto} onChange={e => change("puesto", e.target.value)}><option value="">Todos los puestos</option>{puestos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select></div>}
         <div className="min-w-0"><label className="label" htmlFor="admin-coordinador">Coordinador</label><select className="input" id="admin-coordinador" value={value.coordinador} onChange={e => change("coordinador", e.target.value)}><option value="">Todos los coordinadores</option>{options.coordinadores.map(c => <option key={c.id} value={c.id}>{c.nombre || c.email}</option>)}</select></div>
         <div className="min-w-0"><label className="label" htmlFor="admin-estado">Estado</label><select className="input" id="admin-estado" value={value.estado} onChange={e => change("estado", e.target.value)}><option value="">Todos los estados</option>{ADMIN_STATES.map(s => <option key={s}>{s}</option>)}</select></div>
         <div className="min-w-0"><label className="label" htmlFor="admin-renovacion">Renovación</label><select className="input" id="admin-renovacion" value={value.renovacion} onChange={e => change("renovacion", e.target.value)}><option value="">Todas las renovaciones</option>{RENOVACIONES.map(option => <option key={option} value={option}>{renovacionLabel(option)}</option>)}</select></div>

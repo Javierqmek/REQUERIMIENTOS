@@ -12,7 +12,7 @@ const date = z.string().refine(value => {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }, "Fecha inválida").default("");
 export const adminFiltersSchema = z.object({
-  cliente: uuid, unidad: uuid, coordinador: uuid,
+  cliente: uuid, unidad: uuid, puesto: uuid, coordinador: uuid,
   estado: z.union([z.literal(""), z.enum(ADMIN_STATES)]).default(""),
   desde: date, hasta: date, q: z.string().trim().max(120).default(""),
   genero: z.union([z.literal(""),z.literal("HOMBRE"),z.literal("MUJER"),z.literal("AMBOS")]).default(""),
@@ -24,7 +24,7 @@ export const adminFiltersSchema = z.object({
 }).refine(f => !f.desde || !f.hasta || f.desde <= f.hasta, { message: "La fecha desde no puede ser posterior a la fecha hasta", path: ["hasta"] })
   .refine(f => !f.unidadesMin || !f.unidadesMax || Number(f.unidadesMin) <= Number(f.unidadesMax), { message: "El mínimo de unidades no puede superar el máximo", path: ["unidadesMax"] });
 export type AdminFilters = z.infer<typeof adminFiltersSchema>;
-export const EMPTY_FILTERS: AdminFilters = { cliente: "", unidad: "", coordinador: "", estado: "", desde: "", hasta: "", q: "", genero:"", renovacion:"", unidadesMin:"", unidadesMax:"", duplicados: "", orden: "", direccion: "" };
+export const EMPTY_FILTERS: AdminFilters = { cliente: "", unidad: "", puesto: "", coordinador: "", estado: "", desde: "", hasta: "", q: "", genero:"", renovacion:"", unidadesMin:"", unidadesMax:"", duplicados: "", orden: "", direccion: "" };
 export function parseAdminQuery(params: URLSearchParams) {
   return {
     filters: adminFiltersSchema.parse(Object.fromEntries(params)),
@@ -47,6 +47,7 @@ export function filterRpcArgs(filters: AdminFilters) {
     p_hasta: until, p_busqueda: filters.q || null,
     p_genero: filters.genero || null,
     p_renovacion: filters.renovacion || null,
+    p_puesto_id: filters.puesto || null,
     p_unidades_min: filters.unidadesMin ? Number(filters.unidadesMin) : null,
     p_unidades_max: filters.unidadesMax ? Number(filters.unidadesMax) : null,
     p_solo_duplicados: filters.duplicados === "1",

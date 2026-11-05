@@ -17,9 +17,13 @@ import { parseRequirementQuery, type RequirementFilters } from "../../lib/requir
 import { editGarments, inviernoGarment, veranoGarment } from "../fixtures/edit";
 import { PDFDocument } from "pdf-lib";
 import { makeCorporateStamp } from "../../lib/documents/security";
+import { buildPrendasCsv, prendasExportFilename } from "../../lib/admin/prendas-export";
 
+// BCR diferencia prendas por puesto: la misma camisa va en dos puestos con distinta cantidad.
+const BCR = { cliente: "55000000-0000-4000-8000-0000000000b1", unidad: "66000000-0000-4000-8000-0000000000b1", puestoA: "77000000-0000-4000-8000-0000000000a1", puestoB: "77000000-0000-4000-8000-0000000000a2" };
+const bcrCamisa = (cantidad: number) => ({ id: "88000000-0000-4000-8000-0000000000c1", codigo_prenda: "CAM-BL", nombre_prenda: "CAMISA BLANCA MANGA CORTA", codigo_almacen: "UNF1", precio: 40, cantidad, genero: "HOMBRE", renovacion: "AMBOS", activo: true });
 const options: AdminOptions = {
-  clientes: [{ id: IDS.cliente, nombre: "RENIEC" }, { id: "55000000-0000-4000-8000-000000000002", nombre: "CLIENTE CON NOMBRE CORPORATIVO EXTENSO" }],
+  clientes: [{ id: IDS.cliente, nombre: "RENIEC" }, { id: "55000000-0000-4000-8000-000000000002", nombre: "CLIENTE CON NOMBRE CORPORATIVO EXTENSO" }, { id: BCR.cliente, nombre: "BCR" }],
   unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE" }, { id: "66000000-0000-4000-8000-000000000002", cliente_id: "55000000-0000-4000-8000-000000000002", nombre: "SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA" }],
   coordinadores: [{ id: IDS.coordinador, nombre: "Javier Quispe", email: "qa@example.test" }],
 };
@@ -36,8 +40,9 @@ const initialRecords = Array.from({ length: 62 }, (_, index) => {
   });
 });
 const initialCatalogRows = {
-  clientes: options.clientes.map((row,index)=>({...row,activo:index===0})),
+  clientes: options.clientes.map((row,index)=>({...row,activo:index===0||row.nombre==="BCR",diferencia_puestos:row.nombre==="BCR"})),
   unidades: options.unidades.map((row,index)=>({...row,renovacion_defecto:"VERANO",clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
+  puestos: [{id:BCR.puestoA,cliente_id:BCR.cliente,nombre:"Vigilante Masculino",activo:true,clientes:{nombre:"BCR"}},{id:BCR.puestoB,cliente_id:BCR.cliente,nombre:"Vigilante Masculino (Terno)",activo:true,clientes:{nombre:"BCR"}}],
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
   prendas: editGarments.map((row,index)=>({id:row.id,codigo_prenda:row.codigo_prenda,nombre_prenda:row.nombre_prenda,codigo_almacen:row.codigo_almacen,precio:row.precio,activo:index!==1,asignaciones:[{id:"a"+row.id.slice(1),cliente_id:IDS.cliente,cliente:"RENIEC",renovacion:row.renovacion,genero:row.genero,cantidad:row.cantidad,activo:true}]})),
   provincias: [{id:"aa100000-0000-4000-8000-000000000001",nombre:"Lima",activo:true},{id:"aa100000-0000-4000-8000-000000000002",nombre:"Arequipa",activo:true}],
@@ -46,7 +51,7 @@ const recordsByProject=new Map<string,typeof initialRecords>();
 function recordsFor(project:string){let rows=recordsByProject.get(project);if(!rows){rows=initialRecords.map(row=>({...row}));recordsByProject.set(project,rows)}return rows}
 type CatalogRows=typeof initialCatalogRows;
 const catalogRowsByProject=new Map<string,CatalogRows>();
-function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row})),provincias:initialCatalogRows.provincias.map(row=>({...row}))};catalogRowsByProject.set(project,rows)}return rows}
+function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row})),provincias:initialCatalogRows.provincias.map(row=>({...row})),puestos:initialCatalogRows.puestos.map(row=>({...row,clientes:{...row.clientes}}))};catalogRowsByProject.set(project,rows)}return rows}
 let catalogSequence=100;
 function catalogId(){catalogSequence++;return "99000000-0000-4000-8000-"+String(catalogSequence).padStart(12,"0")}
 type VisualFilters = Partial<AdminFilters & RequirementFilters>;
@@ -81,12 +86,14 @@ async function main() {
           args.path === "next/image" ? 'import React from "react"; export default function Image({fill,unoptimized,...p}){void fill;void unoptimized;return React.createElement("img",p)}' :
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
           `const catalogs=${JSON.stringify({
-            clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true }],
-            unidades: [{ id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", renovacion_defecto: "VERANO", activo: true }, { id: "66000000-0000-4000-8000-000000000003", cliente_id: IDS.cliente, nombre: "SEDE ANDINA INVIERNO", renovacion_defecto: "INVIERNO", activo: true }],
+            clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true, diferencia_puestos: false }, { id: BCR.cliente, nombre: "BCR", activo: true, diferencia_puestos: true }],
+            puestos: [{ id: BCR.puestoA, cliente_id: BCR.cliente, nombre: "Vigilante Masculino", activo: true }, { id: BCR.puestoB, cliente_id: BCR.cliente, nombre: "Vigilante Masculino (Terno)", activo: true }],
+            puestoPrendas: { [BCR.puestoA]: [bcrCamisa(2)], [BCR.puestoB]: [bcrCamisa(3)] },
+            unidades: [{ id: BCR.unidad, cliente_id: BCR.cliente, nombre: "BCR SEDE CENTRAL", renovacion_defecto: "VERANO", activo: true }, { id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", renovacion_defecto: "VERANO", activo: true }, { id: "66000000-0000-4000-8000-000000000003", cliente_id: IDS.cliente, nombre: "SEDE ANDINA INVIERNO", renovacion_defecto: "INVIERNO", activo: true }],
             prendas: [...editGarments, inviernoGarment, veranoGarment],
             provincias: [{ id: "aa100000-0000-4000-8000-000000000001", nombre: "AREQUIPA", activo: true }, { id: "aa100000-0000-4000-8000-000000000002", nombre: "CUSCO", activo: true }],
           })}; const agents=[{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA AGENTE OPERATIVA",dni:"12345678",cargo:"AGENTE",activo:true},{id:"22000000-0000-4000-8000-000000000002",codigo_personal:"PER-002",nombre:"CARLOS REEMPLAZO OPERATIVO",dni:"87654321",cargo:"AGENTE",activo:true}];
-          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name,args){const result=name==="buscar_personal"?{data:agents,error:null}:name==="listar_prendas_cliente"?{data:catalogs.prendas.filter(p=>p.renovacion==="AMBOS"||p.renovacion===args.p_renovacion),error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},range(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(table==="papeletas_vacaciones"?[{id:"aa000000-0000-4000-8000-000000000099"}]:(table==="provincias"&&new URLSearchParams(window.location.search).get("sinProvincias")==="1")?[]:(catalogs[table]||[]))];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}},async maybeSingle(){await new Promise(r=>setTimeout(r,20));return {data:rows[0]??null,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
+          export const createClient=()=>({auth:{signOut:async()=>({})},rpc(name,args){(window.__rpcCalls=window.__rpcCalls||[]).push({name,args});const result=name==="buscar_personal"?{data:agents,error:null}:name==="listar_prendas_cliente"?{data:args.p_puesto_id?(catalogs.puestoPrendas[args.p_puesto_id]||[]):catalogs.prendas.filter(p=>p.renovacion==="AMBOS"||p.renovacion===args.p_renovacion),error:null}:{data:"44000000-0000-4000-8000-000000000099",error:null};const chain={select(){return chain},range(){return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return result},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return chain},from(table){let rows=[...(table==="papeletas_vacaciones"?[{id:"aa000000-0000-4000-8000-000000000099"}]:(table==="provincias"&&new URLSearchParams(window.location.search).get("sinProvincias")==="1")?[]:(catalogs[table]||[]))];const chain={select(){return chain},eq(column,value){rows=rows.filter(row=>row[column]===value);return chain},in(column,values){rows=rows.filter(row=>values.includes(row[column]));return chain},order(){return chain},range(from,to){rows=rows.slice(from,to+1);return chain},async abortSignal(){await new Promise(r=>setTimeout(r,80));return {data:rows,error:null}},async maybeSingle(){await new Promise(r=>setTimeout(r,20));return {data:rows[0]??null,error:null}}};return chain}});`, loader: "js", resolveDir: process.cwd(),
       }));
     } }],
   });
@@ -169,6 +176,12 @@ async function main() {
         }
         sendJson(input.mode==="preview"?{rows:input.rows,issues:[],nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}:{nuevos:input.rows.length,actualizados:0,omitidos:0,errores:0}); return;
       }
+      if (url.pathname === "/api/admin/prendas/exportar") {
+        const cliente = url.searchParams.get("cliente");
+        const assigned = [{ codigo_prenda: "0012", nombre_prenda: "CAMISA BLANCA MANGA CORTA", codigo_almacen: "UNF1", precio: "40.00", cantidad: 2, cliente: "BCR", puesto: "Vigilante Masculino", genero: "HOMBRE", renovacion: "AMBOS", activo: true }];
+        const rows = cliente ? assigned : [...assigned, { codigo_prenda: "SOLA-01", nombre_prenda: "PRENDA SIN ASIGNACION", codigo_almacen: "UNF9", precio: "9.50", cantidad: null, cliente: null, puesto: null, genero: null, renovacion: null, activo: true }];
+        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${prendasExportFilename(new Date("2026-11-05T12:00:00Z"), cliente ? "BCR" : null)}"` }); res.end(buildPrendasCsv(rows)); return;
+      }
       if (url.pathname === "/api/admin/catalogos") {
         if(req.method!=="GET"){
           let body="";for await(const chunk of req)body+=chunk.toString();const input=JSON.parse(body);
@@ -181,14 +194,14 @@ async function main() {
           let row=rows.find(item=>item.id===input.id);
           if(!row){row={id:catalogId(),activo:true};rows.push(row);}
           Object.assign(row,values);
-          if(kind==="unidades"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.clientes={nombre:selected?.nombre??"Cliente nuevo"};}
-          if(kind==="prendas"){row.asignaciones=((values.asignaciones??row.asignaciones??[]) as {id?:string;cliente_id:string;renovacion:string;genero:string;cantidad:number;activo:boolean}[]).map(item=>({id:item.id??catalogId(),cliente_id:item.cliente_id,cliente:options.clientes.find(client=>client.id===item.cliente_id)?.nombre??"Cliente nuevo",renovacion:item.renovacion,genero:item.genero,cantidad:item.cantidad,activo:item.activo}));}
+          if(kind==="unidades"||kind==="puestos"){const selected=options.clientes.find(client=>client.id===values.cliente_id);row.clientes={nombre:selected?.nombre??"Cliente nuevo"};}
+          if(kind==="prendas"){row.asignaciones=((values.asignaciones??row.asignaciones??[]) as {id?:string;cliente_id:string;puesto_id?:string|null;renovacion:string;genero:string;cantidad:number;activo:boolean}[]).map(item=>({id:item.id??catalogId(),cliente_id:item.cliente_id,cliente:options.clientes.find(client=>client.id===item.cliente_id)?.nombre??"Cliente nuevo",puesto_id:item.puesto_id??null,puesto:(catalogRows.puestos as {id:string;nombre:string}[]).find(p=>p.id===item.puesto_id)?.nombre??null,renovacion:item.renovacion,genero:item.genero,cantidad:item.cantidad,activo:item.activo}));}
           sendJson({accion:req.method==="POST"?"crear":"editar",row},req.method==="POST"?201:200);return;
         }
         const kind=(url.searchParams.get("catalogo")||"clientes") as keyof typeof catalogRows;
         let rows=[...catalogRows[kind]] as Record<string,unknown>[]; const q=(url.searchParams.get("q")||"").toLowerCase();
         if(q)rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
-        if(client&&kind==="unidades")rows=rows.filter(row=>row.cliente_id===client);
+        if(client&&(kind==="unidades"||kind==="puestos"))rows=rows.filter(row=>row.cliente_id===client);
         if(client&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {cliente_id:string}[]).some(item=>item.cliente_id===client));
         const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {genero:string}[]).some(item=>item.genero===gender));
         if(kind==="clientes"||kind==="unidades")rows=rows.map(row=>({...row,puede_eliminar:!["RENIEC","CLIENTE CON NOMBRE CORPORATIVO EXTENSO","OFICINA REGISTRAL ATE","SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA"].includes(String(row.nombre)),...(kind==="unidades"?{puede_cambiar_cliente:!String(row.nombre).includes("OFICINA")}: {})}));

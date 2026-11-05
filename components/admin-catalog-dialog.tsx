@@ -6,32 +6,35 @@ import type { CatalogKind } from "@/lib/admin/maintenance";
 import type { Alcance, Impacto } from "@/lib/admin/prendas-import";
 
 type Row = Record<string, unknown> & { id: string; activo: boolean };
-type Assign = { key: string; id?: string; cliente_id: string; renovacion: string; genero: string; cantidad: string; activo: boolean };
+type Assign = { key: string; id?: string; cliente_id: string; puesto_id: string; renovacion: string; genero: string; cantidad: string; activo: boolean };
 let assignSequence = 0;
-type ClientOption = { id: string; nombre: string; activo: boolean };
+type ClientOption = { id: string; nombre: string; activo: boolean; diferencia_puestos?: boolean };
+type PuestoOption = { id: string; cliente_id: string; nombre: string; activo: boolean };
 const names: Record<CatalogKind,string> = {
-  clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda", provincias:"provincia",
+  clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda", provincias:"provincia", puestos:"puesto",
 };
 function text(row:Row|null,key:string){return row?.[key]===undefined||row?.[key]===null?"":String(row[key])}
 function Field({label,name,defaultValue="",maxLength,type="text",readOnly=false,min,max,step,inputMode,pattern,title}:{inputMode?:"numeric";pattern?:string;title?:string;label:string;name:string;defaultValue?:string;maxLength?:number;type?:string;readOnly?:boolean;min?:number;max?:number;step?:number}){
   return <label><span className="label">{label}</span><input className="input" name={name} type={type} maxLength={maxLength} defaultValue={defaultValue} readOnly={readOnly} inputMode={inputMode} pattern={pattern} title={title} min={min} max={max} step={step} required/></label>;
 }
-export function AdminCatalogDialog({catalog,row,clients,busy,error,esSuperadmin=false,onCancel,onSubmit}:{
-  catalog:CatalogKind; row:Row|null; clients:ClientOption[]; busy:boolean; error:string; esSuperadmin?:boolean;
+export function AdminCatalogDialog({catalog,row,clients,puestos=[],busy,error,esSuperadmin=false,onCancel,onSubmit}:{
+  catalog:CatalogKind; row:Row|null; clients:ClientOption[]; puestos?:PuestoOption[]; busy:boolean; error:string; esSuperadmin?:boolean;
   onCancel:()=>void; onSubmit:(values:Record<string,unknown>)=>void;
 }){
-  const cancelRef=useRef<HTMLButtonElement>(null),editing=Boolean(row),currentClientId=catalog==="unidades"?text(row,"cliente_id"):clients.find(c=>c.nombre===text(row,"cliente"))?.id??"";
+  const cancelRef=useRef<HTMLButtonElement>(null),editing=Boolean(row),currentClientId=catalog==="unidades"||catalog==="puestos"?text(row,"cliente_id"):clients.find(c=>c.nombre===text(row,"cliente"))?.id??"";
   const selectableClients=clients.filter(c=>c.activo||c.id===currentClientId);
-  const [assigns,setAssigns]=useState<Assign[]>(()=>catalog==="prendas"?(((row?.asignaciones as {id:string;cliente_id:string;renovacion:string;genero:string;cantidad:number;activo:boolean}[]|undefined)??[]).map(a=>({key:a.id,id:a.id,cliente_id:a.cliente_id,renovacion:a.renovacion,genero:a.genero,cantidad:String(a.cantidad),activo:a.activo}))):[]);
+  const [assigns,setAssigns]=useState<Assign[]>(()=>catalog==="prendas"?(((row?.asignaciones as {id:string;cliente_id:string;puesto_id?:string|null;renovacion:string;genero:string;cantidad:number;activo:boolean}[]|undefined)??[]).map(a=>({key:a.id,id:a.id,cliente_id:a.cliente_id,puesto_id:a.puesto_id??"",renovacion:a.renovacion,genero:a.genero,cantidad:String(a.cantidad),activo:a.activo}))):[]);
   // Cambiar el precio o el código de almacén: las líneas de requerimientos guardan una copia; se pide el alcance.
   const [pending,setPending]=useState<{values:Record<string,unknown>;impact:Impacto}|null>(null),[scope,setScope]=useState<Alcance>("ahora"),[checking,setChecking]=useState(false),[checkError,setCheckError]=useState("");
+  const usesPuestos=(clientId:string)=>clients.find(c=>c.id===clientId)?.diferencia_puestos===true;
   const patchAssign=(key:string,patch:Partial<Assign>)=>setAssigns(current=>current.map(a=>a.key===key?{...a,...patch}:a));
   useEffect(()=>{cancelRef.current?.focus();const close=(event:KeyboardEvent)=>{if(event.key==="Escape"&&!busy)onCancel()};document.addEventListener("keydown",close);return()=>document.removeEventListener("keydown",close)},[busy,onCancel]);
   async function submit(event:React.FormEvent<HTMLFormElement>){
     event.preventDefault();if(pending){onSubmit({...pending.values,alcance:scope});return}
     const data=new FormData(event.currentTarget);
     const common=Object.fromEntries(data.entries()) as Record<string,unknown>;
-    if(catalog==="prendas"){common.precio=Number(common.precio);common.asignaciones=assigns.map(a=>({...(a.id?{id:a.id}:{}),cliente_id:a.cliente_id,renovacion:a.renovacion,genero:a.genero,cantidad:Number(a.cantidad),activo:a.activo}))}
+    if(catalog==="clientes")common.diferencia_puestos=data.get("diferencia_puestos")==="on";
+    if(catalog==="prendas"){common.precio=Number(common.precio);common.asignaciones=assigns.map(a=>({...(a.id?{id:a.id}:{}),cliente_id:a.cliente_id,...(usesPuestos(a.cliente_id)?{puesto_id:a.puesto_id||null}:{}),renovacion:a.renovacion,genero:a.genero,cantidad:Number(a.cantidad),activo:a.activo}))}
     if(catalog==="prendas"&&editing&&(Number(common.precio)!==Number(row?.precio)||String(common.codigo_almacen).trim()!==text(row,"codigo_almacen"))){
       setChecking(true);setCheckError("");
       try{
@@ -60,7 +63,12 @@ export function AdminCatalogDialog({catalog,row,clients,busy,error,esSuperadmin=
           {error&&<Alert kind="error">{error}</Alert>}
         </div>}
         <div className={"grid max-h-[65vh] gap-4 overflow-y-auto px-5 py-5 sm:grid-cols-2"+(pending?" hidden":"")}>
-          {catalog==="clientes"&&<div className="sm:col-span-2"><Field label="Nombre del cliente" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>}
+          {catalog==="clientes"&&<><div className="sm:col-span-2"><Field label="Nombre del cliente" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>
+            <label className="flex min-h-11 items-start gap-3 rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm sm:col-span-2"><input type="checkbox" name="diferencia_puestos" className="mt-1" defaultChecked={row?.diferencia_puestos===true}/><span><strong className="font-medium">Diferencia prendas por puesto</strong><span className="mt-0.5 block text-xs text-[var(--text-secondary)]">Las prendas y cantidades dependen del puesto (p. ej. BCR). Los requerimientos de este cliente pedirán el puesto. Solo puede cambiarse si el cliente no tiene asignaciones de prendas vigentes.</span></span></label></>}
+          {catalog==="puestos"&&<>
+            <label><span className="label">Cliente</span><select className="input" name="cliente_id" defaultValue={currentClientId} disabled={editing} required><option value="">Selecciona un cliente</option>{clients.filter(c=>c.diferencia_puestos===true&&(c.activo||c.id===currentClientId)).map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select>{editing&&<input type="hidden" name="cliente_id" value={currentClientId}/>}<span className="mt-1.5 block text-xs text-[var(--text-secondary)]">{editing?"Un puesto no cambia de cliente.":"Solo aparecen los clientes con \"Diferencia prendas por puesto\"."}</span></label>
+            <Field label="Nombre del puesto" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/>
+          </>}
           {catalog==="provincias"&&<div className="sm:col-span-2"><Field label="Nombre de la provincia" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>}
           {catalog==="unidades"&&<>
             <label><span className="label">Cliente</span><select className="input" name="cliente_id" defaultValue={currentClientId} disabled={editing&&row?.puede_cambiar_cliente===false} required><option value="">Selecciona un cliente</option>{selectableClients.map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select>{editing&&row?.puede_cambiar_cliente===false&&<span className="mt-1.5 block text-xs text-[var(--text-secondary)]">No puede cambiar porque la unidad ya fue utilizada.</span>}{editing&&row?.puede_cambiar_cliente===false&&<input type="hidden" name="cliente_id" value={currentClientId}/>}</label>
@@ -78,10 +86,11 @@ export function AdminCatalogDialog({catalog,row,clients,busy,error,esSuperadmin=
             <Field label="Código de almacén" name="codigo_almacen" maxLength={80} defaultValue={text(row,"codigo_almacen")}/>
             <div className="sm:col-span-2"><Field label="Nombre de la prenda" name="nombre_prenda" maxLength={240} defaultValue={text(row,"nombre_prenda")}/></div>
             <Field label="Precio unitario" name="precio" type="number" min={0} max={9999999999.99} step={0.01} defaultValue={text(row,"precio")} />
-            <div className="sm:col-span-2" data-testid="asignaciones"><div className="flex items-center justify-between gap-2"><div><span className="label !mb-0">Asignaciones por cliente</span><span className="block text-xs text-[var(--text-secondary)]">El género y la cantidad dependen del cliente y la renovación. AMBOS no puede convivir con Verano o Invierno para el mismo cliente.</span></div><button type="button" className="btn btn-secondary !min-h-9 shrink-0" onClick={()=>setAssigns(current=>[...current,{key:"nueva-"+(++assignSequence),cliente_id:"",renovacion:"AMBOS",genero:"AMBOS",cantidad:"1",activo:true}])}><Plus size={15}/>Agregar asignación</button></div>
+            <div className="sm:col-span-2" data-testid="asignaciones"><div className="flex items-center justify-between gap-2"><div><span className="label !mb-0">Asignaciones por cliente</span><span className="block text-xs text-[var(--text-secondary)]">El género y la cantidad dependen del cliente y la renovación. AMBOS no puede convivir con Verano o Invierno para el mismo cliente (y puesto).</span></div><button type="button" className="btn btn-secondary !min-h-9 shrink-0" onClick={()=>setAssigns(current=>[...current,{key:"nueva-"+(++assignSequence),cliente_id:"",puesto_id:"",renovacion:"AMBOS",genero:"AMBOS",cantidad:"1",activo:true}])}><Plus size={15}/>Agregar asignación</button></div>
               {!assigns.length&&<p className="mt-2 text-xs text-[var(--warning)]">Sin asignaciones: la prenda no se ofrecerá a ningún cliente.</p>}
               <ul className="mt-2 grid gap-2">{assigns.map(a=><li key={a.key} className="grid grid-cols-2 gap-2 rounded-lg border border-[var(--border)] p-2 sm:grid-cols-[minmax(0,1fr)_110px_110px_90px_auto_auto] sm:items-end">
-                <label className="col-span-2 sm:col-span-1"><span className="label">Cliente</span><select aria-label="Cliente de la asignación" className="input" value={a.cliente_id} disabled={Boolean(a.id)} required onChange={e=>patchAssign(a.key,{cliente_id:e.target.value})}><option value="">Selecciona un cliente</option>{clients.filter(c=>c.activo||c.id===a.cliente_id).map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
+                <div className="col-span-2 grid gap-2 sm:col-span-1"><label><span className="label">Cliente</span><select aria-label="Cliente de la asignación" className="input" value={a.cliente_id} disabled={Boolean(a.id)} required onChange={e=>patchAssign(a.key,{cliente_id:e.target.value,puesto_id:""})}><option value="">Selecciona un cliente</option>{clients.filter(c=>c.activo||c.id===a.cliente_id).map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
+                {usesPuestos(a.cliente_id)&&<label><span className="label">Puesto</span><select aria-label="Puesto de la asignación" className="input" value={a.puesto_id} disabled={Boolean(a.id)} required onChange={e=>patchAssign(a.key,{puesto_id:e.target.value})}><option value="">Selecciona un puesto</option>{puestos.filter(p=>p.cliente_id===a.cliente_id&&(p.activo||p.id===a.puesto_id)).map(p=><option key={p.id} value={p.id}>{p.nombre}{p.activo?"":" (inactivo)"}</option>)}</select></label>}</div>
                 <label><span className="label">Renovación</span><select aria-label="Renovación de la asignación" className="input" value={a.renovacion} onChange={e=>patchAssign(a.key,{renovacion:e.target.value})}><option value="VERANO">Verano</option><option value="INVIERNO">Invierno</option><option value="AMBOS">Ambos</option></select></label>
                 <label><span className="label">Género</span><select aria-label="Género de la asignación" className="input" value={a.genero} onChange={e=>patchAssign(a.key,{genero:e.target.value})}><option value="HOMBRE">Hombre</option><option value="MUJER">Mujer</option><option value="AMBOS">Ambos</option></select></label>
                 <label><span className="label">Cantidad</span><input aria-label="Cantidad de la asignación" className="input" type="number" min={1} max={10000} step={1} required value={a.cantidad} onChange={e=>patchAssign(a.key,{cantidad:e.target.value})}/></label>

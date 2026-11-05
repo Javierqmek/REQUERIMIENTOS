@@ -15,10 +15,10 @@ import { useClientGarments } from "@/components/use-client-garments";
 import { genderLabel, type GenderChoice } from "@/lib/garments/gender";
 import { garmentChoices, garmentFits as fits, renovacionLabel, type Renovacion } from "@/lib/garments/renovacion";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
-import type { Cliente, Personal, Prenda, Unidad } from "@/lib/types";
+import type { Cliente, Personal, Prenda, Puesto, Unidad } from "@/lib/types";
 import { createRequestId } from "@/lib/security/request-id";
 
-type Choice = { renovacion?: Renovacion; gender?: GenderChoice };
+type Choice = { renovacion?: Renovacion; gender?: GenderChoice; puestoId?: string };
 export default function NewRequirement() {
   const supabase = useMemo(() => createClient(), []);
   const savingRef = useRef(false);
@@ -31,6 +31,7 @@ export default function NewRequirement() {
   const [unitId, setUnitId] = useState("");
   const [gender, setGender] = useState<GenderChoice | null>(null);
   const [renovacion, setRenovacion] = useState<Renovacion | null>(null);
+  const [puestoId, setPuestoId] = useState("");
   const [pendingChange, setPendingChange] = useState<Choice | null>(null);
   const [lines, setLines] = useState<Prenda[]>([]);
   const [selected, setSelected] = useState("");
@@ -42,13 +43,19 @@ export default function NewRequirement() {
   const client = clients.rows.find(c => c.id === clientId);
   const units = useActiveCatalog<Unidad>(supabase, "unidades", step === 2 && Boolean(client), { column: "cliente_id", value: clientId });
   const unit = units.rows.find(u => u.id === unitId);
+  // Clientes con "Diferencia prendas por puesto": el puesto es obligatorio y define qué prendas y cantidades se ofrecen.
+  const usesPuestos = client?.diferencia_puestos === true;
+  const puestos = useActiveCatalog<Puesto>(supabase, "puestos", step === 2 && usesPuestos, { column: "cliente_id", value: clientId });
+  const puesto = puestos.rows.find(p => p.id === puestoId);
   // Solo prendas asignadas a ESTE cliente para esta renovación (o AMBOS), con la cantidad de su asignación.
-  const garments = useClientGarments(supabase, step === 2 && Boolean(client && unit && gender && renovacion), clientId, renovacion);
+  const puestoReady = !usesPuestos || Boolean(puesto);
+  const garments = useClientGarments(supabase, step === 2 && Boolean(client && unit && gender && renovacion && puestoReady), clientId, renovacion, usesPuestos ? puestoId : null);
   const visibleGarments = garments.rows.filter(garment => gender && renovacion && fits(garment, renovacion, gender));
   const choices = garmentChoices(visibleGarments, lines.map(line => line.id));
   const chosen = garments.rows.find(g => g.id === selected);
-  const ready = Boolean(client && unit && gender && renovacion) && !garments.loading && !garments.error;
-  const removed = pendingChange ? lines.filter(garment => !fits(garment, pendingChange.renovacion ?? renovacion, pendingChange.gender ?? gender)) : [];
+  const ready = Boolean(client && unit && gender && renovacion && puestoReady) && !garments.loading && !garments.error;
+  // Cambiar de puesto cambia las cantidades de las asignaciones: se vuelve a elegir todo.
+  const removed = pendingChange ? lines.filter(garment => pendingChange.puestoId !== undefined || !fits(garment, pendingChange.renovacion ?? renovacion, pendingChange.gender ?? gender)) : [];
   const total = catalogTotal(lines);
 
   useEffect(() => {
@@ -72,7 +79,7 @@ export default function NewRequirement() {
   }, [query, supabase]);
 
   function clearDestination() {
-    setClientId(""); setUnitId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
+    setClientId(""); setUnitId(""); setPuestoId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
   }
   function reset() {
     if (savingRef.current) return;
@@ -83,16 +90,22 @@ export default function NewRequirement() {
     clearDestination(); setAgent(a); setStep(2);
   }
   function changeClient(id: string) {
-    setClientId(id); setUnitId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
+    setClientId(id); setUnitId(""); setPuestoId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
   }
   function applyChange(next: Choice) {
     const nextRenovacion = next.renovacion ?? renovacion, nextGender = next.gender ?? gender;
     setRenovacion(nextRenovacion); setGender(nextGender);
-    setLines(current => current.filter(garment => fits(garment, nextRenovacion, nextGender)));
+    if (next.puestoId !== undefined) { setPuestoId(next.puestoId); setLines([]); }
+    else setLines(current => current.filter(garment => fits(garment, nextRenovacion, nextGender)));
     setSelected(""); setPendingChange(null); setError("");
   }
   function requestChange(next: Choice) {
     const nextRenovacion = next.renovacion ?? renovacion, nextGender = next.gender ?? gender;
+    if (next.puestoId !== undefined) {
+      if (next.puestoId === puestoId) return;
+      if (lines.length) setPendingChange(next); else applyChange(next);
+      return;
+    }
     if (nextRenovacion === renovacion && nextGender === gender) return;
     if (lines.some(garment => !fits(garment, nextRenovacion, nextGender))) setPendingChange(next);
     else applyChange(next);
@@ -110,10 +123,11 @@ export default function NewRequirement() {
   async function save() {
     if (!agent || savingRef.current) return;
     const parsed = requerimientoSchema.safeParse({
-      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, renovacion: renovacion ?? undefined, genero: gender ?? undefined,
+      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, puesto_id: usesPuestos ? puestoId || undefined : undefined, renovacion: renovacion ?? undefined, genero: gender ?? undefined,
       detalles: lines.map(p => ({ prenda_id: p.id })),
     });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
+    if (usesPuestos && !puestoId) { setError("Selecciona un puesto"); return; }
     if (!ready) { setError("Verifica el cliente y la unidad antes de guardar."); return; }
     savingRef.current = true; setSaving(true); setError("");
     try {
@@ -123,6 +137,7 @@ export default function NewRequirement() {
         p_unidad_id: parsed.data.unidad_id,
         p_renovacion: parsed.data.renovacion,
         p_genero: parsed.data.genero,
+        p_puesto_id: parsed.data.puesto_id ?? null,
         p_detalles: parsed.data.detalles,
         p_request_id: requestId,
       });
@@ -203,12 +218,22 @@ export default function NewRequirement() {
           </div>
         </div>
         {unit && <RenovacionPicker value={renovacion} disabled={saving} onChange={value => requestChange({ renovacion: value })}/>}
+        {unit && usesPuestos && <div className="mt-4">
+          <label className="mb-1 block text-sm font-medium text-[#45556D]" htmlFor="puesto">Puesto</label>
+          <select id="puesto" className="input" value={puestoId} required disabled={saving || puestos.loading || puestos.error} onChange={e => requestChange({ puestoId: e.target.value })}>
+            <option value="">Selecciona un puesto</option>
+            {puestos.rows.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+          {puestos.loading && <LoadingState compact label="Cargando puestos..."/>}
+          {puestos.error && <div className="mt-2"><Alert kind="error">No pudimos cargar los puestos.</Alert><button className="btn btn-ghost" onClick={puestos.retry}>Reintentar</button></div>}
+          {!puestos.loading && !puestos.error && !puestos.rows.length && <p className="mt-2 text-sm text-[#607089]">Este cliente no tiene puestos activos configurados.</p>}
+        </div>}
         {unit && <GarmentGenderPicker value={gender} disabled={saving} onChange={value => requestChange({ gender: value })}/>}
       </div>
       <div className="section-card mt-4">
         <h2 className="section-title">Prendas solicitadas</h2>
         <p className="mt-1 text-sm text-[#607089]">La cantidad de cada prenda está definida en el maestro de prendas.</p>
-        {!client ? <p className="mt-3 text-sm text-[#607089]">Selecciona un cliente</p> : !unit ? <p className="mt-3 text-sm text-[#607089]">Selecciona una unidad</p> : !renovacion ? <p className="mt-3 text-sm text-[#607089]">Elige el tipo de renovación para ver las prendas disponibles.</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para ver las prendas disponibles.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button className="btn btn-ghost" onClick={garments.retry}>Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente, renovación y género.</p>}
+        {!client ? <p className="mt-3 text-sm text-[#607089]">Selecciona un cliente</p> : !unit ? <p className="mt-3 text-sm text-[#607089]">Selecciona una unidad</p> : usesPuestos && !puesto ? <p className="mt-3 text-sm text-[#607089]">Selecciona un puesto para ver las prendas disponibles.</p> : !renovacion ? <p className="mt-3 text-sm text-[#607089]">Elige el tipo de renovación para ver las prendas disponibles.</p> : !gender ? <p className="mt-3 text-sm text-[#607089]">Elige Hombre o Mujer para ver las prendas disponibles.</p> : garments.loading ? <LoadingState compact label="Cargando prendas..."/> : garments.error ? <div className="mt-3"><Alert kind="error">No pudimos cargar las prendas del cliente.</Alert><button className="btn btn-ghost" onClick={garments.retry}>Reintentar</button></div> : !visibleGarments.length && <p className="mt-3 text-sm text-[#607089]">No hay prendas configuradas para este cliente, renovación y género.</p>}
         <div className="mt-4 grid grid-cols-[88px_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_96px_auto]">
           <div className="col-span-2 min-w-0 sm:col-span-1">
             <label className="mb-1 block text-xs font-medium text-[#607089]" htmlFor="prenda">Prenda</label>
@@ -232,8 +257,8 @@ export default function NewRequirement() {
         <button onClick={save} disabled={saving || !ready || !lines.length} className="btn btn-primary w-full sm:w-auto">{saving ? <LoaderCircle className="animate-spin" size={17}/> : <CheckCircle2 size={17}/>} {saving ? "Guardando requerimiento..." : "Guardar requerimiento"}</button>
       </footer>
       <ConfirmDialog open={Boolean(pendingChange)} busy={false} intent="warning"
-        title={pendingChange?.renovacion ? "¿Cambiar el tipo de renovación?" : "¿Cambiar el género de las prendas?"}
-        description={`Se quitarán las prendas que ya no correspondan: ${removed.map(garment => garment.nombre_prenda).join(", ")}. Las prendas que sirven para ambas opciones se mantendrán.`}
+        title={pendingChange?.puestoId !== undefined ? "¿Cambiar el puesto?" : pendingChange?.renovacion ? "¿Cambiar el tipo de renovación?" : "¿Cambiar el género de las prendas?"}
+        description={pendingChange?.puestoId !== undefined ? `Cada puesto tiene sus propias prendas y cantidades. Se quitarán las prendas ya agregadas: ${removed.map(garment => garment.nombre_prenda).join(", ")}.` : `Se quitarán las prendas que ya no correspondan: ${removed.map(garment => garment.nombre_prenda).join(", ")}. Las prendas que sirven para ambas opciones se mantendrán.`}
         confirmLabel="Sí, continuar" onCancel={() => setPendingChange(null)}
         onConfirm={() => pendingChange && applyChange(pendingChange)}/>
     </section>

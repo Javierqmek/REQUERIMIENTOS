@@ -59,7 +59,7 @@ test("el mismo código con género distinto en el mismo archivo NO es error: el 
 test("limpia espacios en todos los campos (p. ej. codigo_almacen \"UNF1 \")", () => {
   const { valid, issues } = validatePrendasRows([{ codigo_prenda: "  COR001 ", nombre_prenda: " CORBATA ", codigo_almacen: "UNF1 ", precio: " 15 ", cantidad: " 2 ", genero: " unisex ", renovacion: " verano ", activo: " Sí " }], "INDECOPI");
   assert.deepEqual(issues, []);
-  assert.deepEqual(valid[0], { fila: 2, codigo_prenda: "COR001", nombre_prenda: "CORBATA", codigo_almacen: "UNF1", precio: 15, cantidad: 2, genero: "AMBOS", renovacion: "VERANO", activo: true });
+  assert.deepEqual(valid[0], { fila: 2, puesto: null, codigo_prenda: "COR001", nombre_prenda: "CORBATA", codigo_almacen: "UNF1", precio: 15, cantidad: 2, genero: "AMBOS", renovacion: "VERANO", activo: true });
 });
 test("género acepta Hombre/Mujer/Ambos/Unisex y rechaza lo demás; cliente distinto en el archivo es error de esa fila", () => {
   assert.deepEqual(["Hombre", "MUJER", "ámbos", "Unisex", "hombre / mujer"].map(normalizeGenero), ["HOMBRE", "MUJER", "AMBOS", "AMBOS", "AMBOS"]);
@@ -133,9 +133,9 @@ test("decodeCsvBytes lee Windows-1252 sin romper tildes ni la ñ", () => {
 // --- Formulario: solo prendas asignadas al cliente, con su cantidad -----------------------------
 test("el formulario pide al servidor las prendas del cliente y la renovación elegidos (no las filtra por texto)", async () => {
   const hook = await readFile("components/use-client-garments.ts", "utf8");
-  assert.match(hook, /rpc\("listar_prendas_cliente", \{ p_cliente_id: clienteId, p_renovacion: renovacion \}\)/);
-  assert.match(await readFile("components/new-requirement.tsx", "utf8"), /useClientGarments\(supabase, .*clientId, renovacion\)/);
-  assert.match(await readFile("components/edit-requirement.tsx", "utf8"), /useClientGarments\(db, .*row\.cliente_id, row\.renovacion\)/);
+  assert.match(hook, /rpc\("listar_prendas_cliente", \{ p_cliente_id: clienteId, p_renovacion: renovacion, p_puesto_id: puestoId \?\? null \}\)/);
+  assert.match(await readFile("components/new-requirement.tsx", "utf8"), /useClientGarments\(supabase, .*clientId, renovacion, usesPuestos \? puestoId : null\)/);
+  assert.match(await readFile("components/edit-requirement.tsx", "utf8"), /useClientGarments\(db, .*row\.cliente_id, row\.renovacion, row\.puesto_id \?\? null\)/);
   assert.doesNotMatch(await readFile("components/use-active-catalog.ts", "utf8"), /prendas/);
 });
 

@@ -49,8 +49,8 @@ export function checkDni(value: string | undefined): { dni: string } | { error: 
 }
 const booleanValue = (value: string) => {
   const normalized = cleanCell(value).toLowerCase();
-  if (["true", "1", "si", "sí"].includes(normalized)) return true;
-  if (["false", "0", "no"].includes(normalized)) return false;
+  if (["true", "1", "si", "sí", "verdadero"].includes(normalized)) return true;
+  if (["false", "0", "no", "falso"].includes(normalized)) return false;
   return null;
 };
 const noControl = (text: string) => !/[\u0000-\u001f]/.test(text);

@@ -23,6 +23,7 @@ begin
     or new.usuario_creador_id is distinct from old.usuario_creador_id
     or new.cliente_id is distinct from old.cliente_id
     or new.unidad_id is distinct from old.unidad_id
+    or new.puesto_id is distinct from old.puesto_id
     or new.referencia_interna is distinct from old.referencia_interna
     or new.created_at is distinct from old.created_at then
     raise exception 'Solo se permite cambiar el estado';

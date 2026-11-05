@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const columns = {
-  clientes: "id,nombre,activo",
+  clientes: "id,nombre,activo,diferencia_puestos",
   unidades: "id,cliente_id,nombre,renovacion_defecto,activo",
   provincias: "id,nombre,activo",
+  puestos: "id,cliente_id,nombre,activo",
 };
 
 // Read every page of the requested active catalog, never unrelated agents or garments.

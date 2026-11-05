@@ -7,7 +7,7 @@ export type RequirementGenderFilter = typeof REQUIREMENT_GENDERS[number];
 const uuid = z.union([z.literal(""), z.string().uuid()]).default("");
 const count = z.string().regex(/^\d*$/, "Usa números enteros positivos").refine(value => !value || Number(value) <= 5000, "El valor máximo es 5000").default("");
 export const requirementFiltersSchema = z.object({
-  cliente: uuid, unidad: uuid,
+  cliente: uuid, unidad: uuid, puesto: uuid,
   estado: z.union([z.literal(""), z.enum(ADMIN_STATES)]).default(""),
   genero: z.union([z.literal(""), z.enum(REQUIREMENT_GENDERS)]).default(""),
   renovacion: z.union([z.literal(""), z.enum(RENOVACIONES)]).default(""),
@@ -20,7 +20,7 @@ export const requirementFiltersSchema = z.object({
 });
 export type RequirementFilters = z.infer<typeof requirementFiltersSchema>;
 export const EMPTY_REQUIREMENT_FILTERS: RequirementFilters = {
-  cliente:"",unidad:"",estado:"",genero:"",renovacion:"",prendasMin:"",prendasMax:"",unidadesMin:"",unidadesMax:"",q:"",
+  cliente:"",unidad:"",puesto:"",estado:"",genero:"",renovacion:"",prendasMin:"",prendasMax:"",unidadesMin:"",unidadesMax:"",q:"",
 };
 export function parseRequirementQuery(params: URLSearchParams) {
   return { filters: requirementFiltersSchema.parse(Object.fromEntries(params)), page: z.coerce.number().int().min(1).max(100000).parse(params.get("page") ?? 1) };
@@ -30,7 +30,7 @@ export function requirementFilterParams(filters: RequirementFilters,page=1) {
 }
 export function requirementRpcArgs(filters: RequirementFilters) {
   return {
-    p_cliente_id:filters.cliente||null,p_unidad_id:filters.unidad||null,p_estado:filters.estado||null,p_genero:filters.genero||null,p_renovacion:filters.renovacion||null,
+    p_cliente_id:filters.cliente||null,p_unidad_id:filters.unidad||null,p_estado:filters.estado||null,p_genero:filters.genero||null,p_renovacion:filters.renovacion||null,p_puesto_id:filters.puesto||null,
     p_prendas_min:filters.prendasMin?Number(filters.prendasMin):null,p_prendas_max:filters.prendasMax?Number(filters.prendasMax):null,
     p_unidades_min:filters.unidadesMin?Number(filters.unidadesMin):null,p_unidades_max:filters.unidadesMax?Number(filters.unidadesMax):null,
     p_busqueda:filters.q||null,

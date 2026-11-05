@@ -12,8 +12,9 @@ export function useClientGarments(
   enabled: boolean,
   clienteId: string | null | undefined,
   renovacion: Renovacion | null,
+  puestoId?: string | null,
 ) {
-  const key = JSON.stringify([enabled, clienteId, renovacion]);
+  const key = JSON.stringify([enabled, clienteId, renovacion, puestoId ?? null]);
   const [result, setResult] = useState<{ key: string; rows: Prenda[]; loading: boolean; error: boolean }>({ key: "", rows: [], loading: false, error: false });
   const [attempt, setAttempt] = useState(0);
 
@@ -28,7 +29,7 @@ export function useClientGarments(
         const rows: Prenda[] = [];
         const size = 500;
         for (let offset = 0; ; offset += size) {
-          const { data, error } = await supabase.rpc("listar_prendas_cliente", { p_cliente_id: clienteId, p_renovacion: renovacion })
+          const { data, error } = await supabase.rpc("listar_prendas_cliente", { p_cliente_id: clienteId, p_renovacion: renovacion, p_puesto_id: puestoId ?? null })
             .range(offset, offset + size - 1).abortSignal(controller.signal);
           if (controller.signal.aborted) return;
           if (error) throw error;
@@ -42,7 +43,7 @@ export function useClientGarments(
     }
     void load();
     return () => controller.abort();
-  }, [supabase, enabled, clienteId, renovacion, key, attempt]);
+  }, [supabase, enabled, clienteId, renovacion, puestoId, key, attempt]);
 
   const current = enabled && Boolean(clienteId && renovacion) && result.key === key;
   return {
