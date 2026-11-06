@@ -10,15 +10,16 @@ type Assign = { key: string; id?: string; cliente_id: string; puesto_id: string;
 let assignSequence = 0;
 type ClientOption = { id: string; nombre: string; activo: boolean; diferencia_puestos?: boolean };
 type PuestoOption = { id: string; cliente_id: string; nombre: string; activo: boolean };
+type CargoOption = { id: string; nombre: string; activo: boolean };
 const names: Record<CatalogKind,string> = {
-  clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda", provincias:"provincia", puestos:"puesto",
+  clientes:"cliente", unidades:"unidad", personal:"persona", prendas:"prenda", provincias:"provincia", puestos:"puesto", cargos:"cargo",
 };
 function text(row:Row|null,key:string){return row?.[key]===undefined||row?.[key]===null?"":String(row[key])}
 function Field({label,name,defaultValue="",maxLength,type="text",readOnly=false,min,max,step,inputMode,pattern,title}:{inputMode?:"numeric";pattern?:string;title?:string;label:string;name:string;defaultValue?:string;maxLength?:number;type?:string;readOnly?:boolean;min?:number;max?:number;step?:number}){
   return <label><span className="label">{label}</span><input className="input" name={name} type={type} maxLength={maxLength} defaultValue={defaultValue} readOnly={readOnly} inputMode={inputMode} pattern={pattern} title={title} min={min} max={max} step={step} required/></label>;
 }
-export function AdminCatalogDialog({catalog,row,clients,puestos=[],busy,error,esSuperadmin=false,onCancel,onSubmit}:{
-  catalog:CatalogKind; row:Row|null; clients:ClientOption[]; puestos?:PuestoOption[]; busy:boolean; error:string; esSuperadmin?:boolean;
+export function AdminCatalogDialog({catalog,row,clients,puestos=[],cargos=[],busy,error,esSuperadmin=false,onCancel,onSubmit}:{
+  catalog:CatalogKind; row:Row|null; clients:ClientOption[]; puestos?:PuestoOption[]; cargos?:CargoOption[]; busy:boolean; error:string; esSuperadmin?:boolean;
   onCancel:()=>void; onSubmit:(values:Record<string,unknown>)=>void;
 }){
   const cancelRef=useRef<HTMLButtonElement>(null),editing=Boolean(row),currentClientId=catalog==="unidades"||catalog==="puestos"?text(row,"cliente_id"):clients.find(c=>c.nombre===text(row,"cliente"))?.id??"";
@@ -65,6 +66,7 @@ export function AdminCatalogDialog({catalog,row,clients,puestos=[],busy,error,es
         <div className={"grid max-h-[65vh] gap-4 overflow-y-auto px-5 py-5 sm:grid-cols-2"+(pending?" hidden":"")}>
           {catalog==="clientes"&&<><div className="sm:col-span-2"><Field label="Nombre del cliente" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>
             <label className="flex min-h-11 items-start gap-3 rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm sm:col-span-2"><input type="checkbox" name="diferencia_puestos" className="mt-1" defaultChecked={row?.diferencia_puestos===true}/><span><strong className="font-medium">Diferencia prendas por puesto</strong><span className="mt-0.5 block text-xs text-[var(--text-secondary)]">Las prendas y cantidades dependen del puesto (p. ej. BCR). Los requerimientos de este cliente pedirán el puesto. Solo puede cambiarse si el cliente no tiene asignaciones de prendas vigentes.</span></span></label></>}
+          {catalog==="cargos"&&<div className="sm:col-span-2"><Field label="Nombre del cargo" name="nombre" maxLength={120} defaultValue={text(row,"nombre")}/><span className="mt-1.5 block text-xs text-[var(--text-secondary)]">{editing?"Renombrar un cargo lo actualiza en la ficha de las personas; los requerimientos ya creados conservan el cargo con el que se pidieron.":"Aparecerá en las listas de cargos de requerimientos, personal e importaciones."}</span></div>}
           {catalog==="puestos"&&<>
             <label><span className="label">Cliente</span><select className="input" name="cliente_id" defaultValue={currentClientId} disabled={editing} required><option value="">Selecciona un cliente</option>{clients.filter(c=>c.diferencia_puestos===true&&(c.activo||c.id===currentClientId)).map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select>{editing&&<input type="hidden" name="cliente_id" value={currentClientId}/>}<span className="mt-1.5 block text-xs text-[var(--text-secondary)]">{editing?"Un puesto no cambia de cliente.":"Solo aparecen los clientes con \"Diferencia prendas por puesto\"."}</span></label>
             <Field label="Nombre del puesto" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/>
@@ -79,7 +81,7 @@ export function AdminCatalogDialog({catalog,row,clients,puestos=[],busy,error,es
             <Field label="Código de personal" name="codigo_personal" maxLength={80} defaultValue={text(row,"codigo_personal")} readOnly={editing}/>
             <Field label="DNI" name="dni" maxLength={8} inputMode="numeric" pattern="[0-9]{8}" title="Exactamente 8 dígitos" defaultValue={text(row,"dni")} />
             <div className="sm:col-span-2"><Field label="Nombre completo" name="nombre" maxLength={200} defaultValue={text(row,"nombre")}/></div>
-            <div className="sm:col-span-2"><Field label="Cargo" name="cargo" maxLength={120} defaultValue={text(row,"cargo")}/></div>
+            <label className="sm:col-span-2"><span className="label">Cargo</span><select className="input" name="cargo" defaultValue={text(row,"cargo")} required><option value="">Selecciona un cargo</option>{cargos.filter(c=>c.activo||c.nombre===text(row,"cargo")).map(c=>c.nombre).concat(cargos.some(c=>c.nombre===text(row,"cargo"))||!text(row,"cargo")?[]:[text(row,"cargo")]).map(name=><option key={name} value={name}>{name}{cargos.find(c=>c.nombre===name)?.activo===false?" (inactivo)":""}</option>)}</select><span className="mt-1.5 block text-xs text-[var(--text-secondary)]">Los cargos se administran en Mantenimiento → Cargos.</span></label>
           </>}
           {catalog==="prendas"&&<>
             <Field label="Código de prenda" name="codigo_prenda" maxLength={80} defaultValue={text(row,"codigo_prenda")}/>

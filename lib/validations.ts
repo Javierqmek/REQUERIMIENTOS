@@ -11,6 +11,7 @@ export const requerimientoSchema = z.object({
   cliente_id: z.string().uuid("Selecciona un cliente"),
   unidad_id: z.string().uuid("Selecciona una unidad"),
   puesto_id: z.string().uuid("Selecciona un puesto").optional(),
+  cargo: z.string().trim().min(1, "Selecciona el cargo").max(120).optional(),
   renovacion: z.enum(RENOVACIONES, { error: "Selecciona el tipo de renovación" }),
   genero: z.enum(["HOMBRE", "MUJER"], { error: "Selecciona Hombre o Mujer" }),
   detalles: z.array(z.object({

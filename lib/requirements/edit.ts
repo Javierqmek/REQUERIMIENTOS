@@ -2,6 +2,7 @@ import { esAdminUniformes } from "@/lib/roles";
 import { z } from "zod";
 import type { Prenda, Profile, Requerimiento } from "@/lib/types";
 import type { GarmentGender } from "@/lib/garments/gender";
+import { RENOVACIONES } from "@/lib/garments/renovacion";
 
 export const ATTENDED_MESSAGE = "Este requerimiento ya fue atendido y no puede modificarse.";
 export type EditDetail = {
@@ -32,3 +33,12 @@ export function initialEditLines(row: EditableRequirement): EditLine[] {
 export function newEditLine(p: Prenda): EditLine {
   return { prenda_id: p.id, nombre: p.nombre_prenda, cantidad: p.cantidad, precio: Number(p.precio), codigo: p.codigo_almacen, genero: p.genero };
 }
+// Cabecera editable de un requerimiento en Pendiente/Observado: SOLO renovación y cargo (nada más viaja ni se acepta).
+// lineas_confirmadas: ids de las líneas que se desactivarán, tal como las mostró el servidor al pedir confirmación.
+export const editHeaderSchema = z.object({
+  renovacion: z.enum(RENOVACIONES, { error: "La renovación debe ser Verano o Invierno." }).optional(),
+  cargo: z.string().trim().min(1, "Selecciona un cargo.").max(120).optional(),
+  lineas_confirmadas: z.array(z.string().uuid()).max(500).optional(),
+}).strict().refine(value => value.renovacion !== undefined || value.cargo !== undefined, "Indica la renovación o el cargo que quieres cambiar.");
+export type HeaderLine = { id: string; prenda_id: string; codigo: string; nombre: string; cantidad: number };
+export type HeaderResult = { requiere_confirmacion?: true; lineas?: HeaderLine[]; ok?: true; sin_cambios?: boolean; data?: EditPayload };

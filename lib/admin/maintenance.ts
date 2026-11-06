@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PRENDA_RENOVACIONES, RENOVACIONES } from "@/lib/garments/renovacion";
 
-export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas", "provincias", "puestos"] as const;
+export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas", "provincias", "puestos", "cargos"] as const;
 export type CatalogKind = typeof CATALOG_KINDS[number];
 export type CatalogResult = { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number };
 const querySchema = z.object({
@@ -43,6 +43,7 @@ const unitValues = z.object({
   cliente_id: z.string().uuid("Selecciona un cliente válido."), nombre: shortText(200, "El nombre"),
   renovacion_defecto: z.enum(RENOVACIONES, { error: "La renovación por defecto debe ser Verano o Invierno." }),
 }).strict();
+const cargoValues = z.object({ nombre: shortText(120, "El nombre") }).strict();
 const personValues = z.object({
   codigo_personal: shortText(80, "El código"), nombre: shortText(200, "El nombre"),
   dni: z.string().trim().regex(/^\d{8}$/, "El DNI debe tener exactamente 8 dígitos."),
@@ -73,6 +74,7 @@ const createSchemas = [
   z.object({ catalogo: z.literal("prendas"), valores: garmentValues }).strict(),
   z.object({ catalogo: z.literal("provincias"), valores: provinceValues }).strict(),
   z.object({ catalogo: z.literal("puestos"), valores: puestoValues }).strict(),
+  z.object({ catalogo: z.literal("cargos"), valores: cargoValues }).strict(),
 ] as const;
 const updateSchemas = [
   z.object({ catalogo: z.literal("clientes"), id: z.string().uuid(), valores: clientValues }).strict(),
@@ -81,6 +83,7 @@ const updateSchemas = [
   z.object({ catalogo: z.literal("prendas"), id: z.string().uuid(), valores: garmentValues }).strict(),
   z.object({ catalogo: z.literal("provincias"), id: z.string().uuid(), valores: provinceValues }).strict(),
   z.object({ catalogo: z.literal("puestos"), id: z.string().uuid(), valores: puestoValues }).strict(),
+  z.object({ catalogo: z.literal("cargos"), id: z.string().uuid(), valores: cargoValues }).strict(),
 ] as const;
 export const catalogCreateSchema = z.discriminatedUnion("catalogo", createSchemas);
 export const catalogUpdateSchema = z.discriminatedUnion("catalogo", updateSchemas);

@@ -3,6 +3,7 @@
 -- Todo dentro de una transacción con rollback.
 \set ON_ERROR_STOP on
 begin;
+insert into public.cargos(nombre) values ('AGENTE') on conflict do nothing;
 create function pg_temp.ok(value boolean,label text) returns void language plpgsql as $$
 begin if value is distinct from true then raise exception 'FAIL: %',label; end if; raise notice 'PASS: %',label; end $$;
 create function pg_temp.denied(command text,code text,label text) returns void language plpgsql as $$
@@ -76,6 +77,7 @@ select pg_temp.denied($q$update public.requerimientos set agente_id='b3000000-00
 
 \echo '--- restricciones (aplicables después de la fusión) ---'
 update public.personal set activo=false where codigo_personal='171';  -- el par 79/171 no se fusionó en esta prueba: se desactiva solo para poder crear el índice
+set constraints all immediate;  -- personal.cargo -> cargos es diferida: sin esto ALTER TABLE choca con eventos pendientes de la misma transacción
 \i :restr
 select pg_temp.ok(exists(select 1 from pg_constraint where conname='personal_dni_8_digitos' and convalidated) and exists(select 1 from pg_indexes where indexname='personal_dni_activo_uidx'),'CHECK validado e índice único creados');
 select pg_temp.denied($q$insert into public.personal(codigo_personal,nombre,dni,cargo) values('X1','X','1234567','AGENTE')$q$,'23514','CHECK: DNI de 7 dígitos rechazado');

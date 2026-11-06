@@ -9,6 +9,7 @@ export interface Personal {
 export interface Cliente { id: string; nombre: string; activo: boolean; diferencia_puestos?: boolean }
 export interface Puesto { id: string; cliente_id: string; nombre: string; activo: boolean }
 export interface Unidad { id: string; cliente_id: string; nombre: string; renovacion_defecto: import("@/lib/garments/renovacion").Renovacion; activo: boolean }
+export interface Cargo { id: string; nombre: string; activo: boolean }
 export interface Provincia { id: string; nombre: string; activo: boolean }
 export interface Prenda {
   id: string; codigo_prenda: string; nombre_prenda: string; codigo_almacen: string;
@@ -27,6 +28,8 @@ export interface Requerimiento {
   unidades_totales?: number;
   generos?: import("@/lib/garments/gender").GarmentGender[];
   cliente_id: string | null; unidad_id: string | null; puesto_id?: string | null;
+  // Cargo con el que se pidió (copia; el cargo actual de la ficha está en personal.cargo).
+  cargo?: string | null;
   clientes: Pick<Cliente, "nombre"> | null;
   puestos?: Pick<Puesto, "nombre"> | null;
   unidades: Pick<Unidad, "nombre"> | null;

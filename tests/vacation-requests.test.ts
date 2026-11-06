@@ -334,7 +334,7 @@ test("un request_id con formato inválido se rechaza antes de tocar Storage o la
 
 // --- Catálogo de provincias: mantenimiento administrativo (reutiliza el CRUD existente) ---
 test("provincias se integra al mismo catálogo administrativo, sin un CRUD paralelo", () => {
-  assert.deepEqual(CATALOG_KINDS, ["clientes", "unidades", "personal", "prendas", "provincias", "puestos"]);
+  assert.deepEqual(CATALOG_KINDS, ["clientes", "unidades", "personal", "prendas", "provincias", "puestos", "cargos"]);
 });
 test("admin puede crear una provincia (esquema válido para admin_guardar_catalogo)", () => {
   const parsed = catalogCreateSchema.safeParse({ catalogo: "provincias", valores: { nombre: "Puno" } });

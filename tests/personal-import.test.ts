@@ -9,7 +9,8 @@ import { checkPersonalFile, checkDni, preparePersonalImport, validatePersonalRow
 const emptyPreview: PersonalPreview = { aplicado: false, nuevos: 0, sin_cambios: 0, actualizados: 0, diferencias: [], errores: [] };
 function fakeDb(result: Partial<PersonalPreview> = {}, rpcError?: { code: string; message: string }) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
-  const db = { rpc: async (name: string, args: Record<string, unknown>) => { calls.push({ name, args }); return rpcError ? { data: null, error: rpcError } : { data: { ...emptyPreview, ...result }, error: null }; } } as unknown as SupabaseClient;
+  const cargos = [{ nombre: "AGENTE", activo: true }, { nombre: "Guardia", activo: true }];
+  const db = { from: () => ({ select: () => ({ limit: async () => ({ data: cargos, error: null }) }) }), rpc: async (name: string, args: Record<string, unknown>) => { calls.push({ name, args }); return rpcError ? { data: null, error: rpcError } : { data: { ...emptyPreview, ...result }, error: null }; } } as unknown as SupabaseClient;
   return { db, calls };
 }
 type Sent = { fila: number; codigo_personal: string; nombre: string; dni: string; cargo: string | null; activo: boolean };

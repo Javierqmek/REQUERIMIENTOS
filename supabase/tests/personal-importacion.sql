@@ -3,6 +3,8 @@
 -- desactiva a quien no viene en el archivo. Incluye un archivo de más de 1000 filas (hasta 5000).
 \set ON_ERROR_STOP on
 begin;
+-- Catálogo de cargos (el de personal.cargo): estos valores no vienen en la carga inicial de una base vacía.
+insert into public.cargos(nombre) values ('AGENTE'),('GUARDIA DE SEGURIDAD') on conflict do nothing;
 create function pg_temp.ok(value boolean,label text) returns void language plpgsql as $$
 begin if value is distinct from true then raise exception 'FAIL: %',label; end if; raise notice 'PASS: %',label; end $$;
 create function pg_temp.denied(command text,code text,label text) returns void language plpgsql as $$

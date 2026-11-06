@@ -1,6 +1,8 @@
 -- SOLO base descartable con todas las migraciones. Fixtures revertidos.
 \set ON_ERROR_STOP on
 begin;
+-- Catálogo de cargos (el de personal.cargo): estos valores no vienen en la carga inicial de una base vacía.
+insert into public.cargos(nombre) values ('AGENTE'),('GUARDIA DE SEGURIDAD') on conflict do nothing;
 create function pg_temp.ok(value boolean,label text) returns void language plpgsql as $$begin if value is distinct from true then raise exception 'FAIL: %',label;end if;raise notice 'PASS: %',label;end$$;
 create function pg_temp.denied(command text) returns void language plpgsql as $$begin begin execute command;exception when others then raise notice 'PASS: denied %',sqlstate;return;end;raise exception 'FAIL: operation accepted';end$$;
 insert into auth.users(id,email,raw_user_meta_data) values

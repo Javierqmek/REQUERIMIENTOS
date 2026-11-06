@@ -8,6 +8,7 @@ const columns = {
   unidades: "id,cliente_id,nombre,renovacion_defecto,activo",
   provincias: "id,nombre,activo",
   puestos: "id,cliente_id,nombre,activo",
+  cargos: "id,nombre,activo",
 };
 
 // Read every page of the requested active catalog, never unrelated agents or garments.

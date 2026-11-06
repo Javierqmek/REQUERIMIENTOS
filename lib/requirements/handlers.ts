@@ -3,7 +3,7 @@ import { z } from "zod";
 import { HttpInputError, readJsonBody } from "@/lib/security/http";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
-import { ATTENDED_MESSAGE, canEditRequirement, editGarmentsSchema, type EditPayload } from "./edit";
+import { ATTENDED_MESSAGE, canEditRequirement, editGarmentsSchema, editHeaderSchema, type EditPayload, type HeaderResult } from "./edit";
 
 type Dependencies = { getProfile: () => Promise<Profile | null>; getDb: () => Promise<SupabaseClient> };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -34,6 +34,41 @@ export function makeEditGarmentsHandler(deps: Dependencies) {
     } catch (error) {
       if (error instanceof HttpInputError) return json({ error: error.message }, error.status);
       return json({ error: error instanceof z.ZodError || error instanceof SyntaxError ? "Datos inválidos. Envía únicamente las prendas, sin modificar la cabecera." : "No pudimos guardar los cambios. Intenta nuevamente." }, error instanceof z.ZodError || error instanceof SyntaxError ? 400 : 500);
+    }
+  };
+}
+
+// PATCH /api/requerimientos/[id]/cabecera: cambia solo la renovación y/o el cargo (con confirmación de las prendas que dejan de corresponder).
+export function makeEditHeaderHandler(deps: Dependencies) {
+  return async (request: Request, id: string) => {
+    try {
+      const profile = await deps.getProfile();
+      if (!profile || !(esAdminUniformes(profile.role) || profile.role === "coordinador")) return json({ error: "No autorizado" }, 403);
+      z.string().uuid().parse(id);
+      const input = editHeaderSchema.parse(await readJsonBody(request, 32768));
+      const db = await deps.getDb();
+      const loaded = await db.rpc("obtener_edicion_prendas", { p_id: id });
+      if (loaded.error?.code === "42501") return json({ error: "No autorizado" }, 403);
+      if (loaded.error || !loaded.data) return json({ error: "No pudimos cargar el requerimiento." }, 500);
+      const row = (loaded.data as EditPayload).requerimiento;
+      if (!esAdminUniformes(profile.role) && row.usuario_creador_id !== profile.id) return json({ error: "No autorizado" }, 403);
+      if (!canEditRequirement(profile, row)) return json({ error: ATTENDED_MESSAGE }, 409);
+      const result = await db.rpc("editar_cabecera_requerimiento", { p_id: id, p_renovacion: input.renovacion ?? null, p_cargo: input.cargo ?? null, p_lineas_confirmadas: input.lineas_confirmadas ?? null });
+      if (result.error) {
+        const code = result.error.code;
+        if (code === "42501") return json({ error: "No autorizado" }, 403);
+        if (code === "55000") return json({ error: result.error.message || ATTENDED_MESSAGE }, 409);
+        if (code === "22023") return json({ error: result.error.message || "Revisa la renovación y el cargo." }, 400);
+        return json({ error: "No pudimos guardar los cambios. Intenta nuevamente." }, 500);
+      }
+      const data = result.data as HeaderResult;
+      if (data.requiere_confirmacion) return json({ requiere_confirmacion: true, lineas: data.lineas ?? [] });
+      return json({ message: "Datos actualizados correctamente.", data: data.data, sin_cambios: data.sin_cambios === true });
+    } catch (error) {
+      if (error instanceof HttpInputError) return json({ error: error.message }, error.status);
+      if (error instanceof z.ZodError) return json({ error: error.issues[0]?.message ?? "Datos inválidos. Solo se pueden enviar la renovación y el cargo." }, 400);
+      if (error instanceof SyntaxError) return json({ error: "Datos inválidos." }, 400);
+      return json({ error: "No pudimos guardar los cambios. Intenta nuevamente." }, 500);
     }
   };
 }

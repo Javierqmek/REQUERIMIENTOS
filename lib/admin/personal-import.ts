@@ -57,7 +57,9 @@ const noControl = (text: string) => !/[\u0000-\u001f]/.test(text);
 
 type Row = { fila: number; codigo_personal: string; nombre: string; dni: string; cargo: string | null; activo: boolean };
 
-export function validatePersonalRows(rows: Record<string, string>[], filas?: number[]) {
+// cargos: catálogo de cargos; si se pasa, el cargo de cada fila debe existir en él (error con número de fila). La SQL además exige que esté activo.
+export type CargoLite = { nombre: string; activo: boolean };
+export function validatePersonalRows(rows: Record<string, string>[], filas?: number[], cargos?: CargoLite[] | null) {
   const issues: ImportIssue[] = []; const valid: Row[] = [];
   rows.forEach((raw, index) => {
     const fila = filas?.[index] ?? index + 2;
@@ -71,8 +73,13 @@ export function validatePersonalRows(rows: Record<string, string>[], filas?: num
     if ("error" in dni) return fail(dni.error);
     const activo = booleanValue(r.activo ?? "");
     if (activo === null) return fail("activo debe ser true/false, sí/no o 1/0.");
-    const cargo = r.cargo ? r.cargo : null;
+    let cargo = r.cargo ? r.cargo : null;
     if (cargo && (cargo.length > 120 || !noControl(cargo))) return fail("cargo es demasiado largo.");
+    if (cargo && cargos) {
+      const found = cargos.find(c => c.nombre.toLowerCase() === cargo!.toLowerCase());
+      if (!found) return fail(`El cargo "${cargo}" no existe en el catálogo de cargos (Mantenimiento → Cargos).`);
+      cargo = found.nombre;
+    }
     valid.push({ fila, codigo_personal: codigo, nombre, dni: dni.dni, cargo, activo });
   });
   return { valid, issues };
@@ -99,7 +106,9 @@ const emptyPreview = (): PersonalPreview => ({ aplicado: false, nuevos: 0, sin_c
 export async function preparePersonalImport(db: SupabaseClient, input: unknown) {
   const parsed = personalPayloadSchema.parse(input);
   checkPersonalHeaders(parsed.headers);
-  const { valid, issues } = validatePersonalRows(parsed.rows, parsed.filas);
+  const { data: cargos, error: cargosError } = await db.from("cargos").select("nombre,activo").limit(1000);
+  if (cargosError) throw new Error("No se pudo validar el catálogo de cargos.");
+  const { valid, issues } = validatePersonalRows(parsed.rows, parsed.filas, (cargos ?? []) as CargoLite[]);
   const file = checkPersonalFile(valid);
   const tsIssues = [...issues, ...file.issues];
   const finish = (personal: PersonalPreview): PersonalImportPreview => {

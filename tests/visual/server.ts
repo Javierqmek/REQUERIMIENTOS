@@ -14,7 +14,7 @@ import type { AdminFilters } from "../../lib/admin/filters";
 import type { AdminOptions, SidigeRequirement } from "../../lib/admin/types";
 import type { Estado } from "../../lib/types";
 import { parseRequirementQuery, type RequirementFilters } from "../../lib/requirements/list-filters";
-import { editGarments, inviernoGarment, veranoGarment } from "../fixtures/edit";
+import { editGarments, fixtureEdit, inviernoGarment, veranoGarment } from "../fixtures/edit";
 import { PDFDocument } from "pdf-lib";
 import { makeCorporateStamp } from "../../lib/documents/security";
 import { buildPrendasCsv, prendasExportFilename } from "../../lib/admin/prendas-export";
@@ -42,6 +42,7 @@ const initialRecords = Array.from({ length: 62 }, (_, index) => {
 const initialCatalogRows = {
   clientes: options.clientes.map((row,index)=>({...row,activo:index===0||row.nombre==="BCR",diferencia_puestos:row.nombre==="BCR"})),
   unidades: options.unidades.map((row,index)=>({...row,renovacion_defecto:"VERANO",clientes:{nombre:options.clientes[index].nombre},activo:index===0})),
+  cargos: [{id:"99000000-0000-4000-8000-000000000001",nombre:"AGENTE DE SEGURIDAD",activo:true,personas:3},{id:"99000000-0000-4000-8000-000000000002",nombre:"SUPERVISOR",activo:true,personas:1},{id:"99000000-0000-4000-8000-000000000003",nombre:"DESCANSERO",activo:false,personas:0}],
   puestos: [{id:BCR.puestoA,cliente_id:BCR.cliente,nombre:"Vigilante Masculino",activo:true,clientes:{nombre:"BCR"}},{id:BCR.puestoB,cliente_id:BCR.cliente,nombre:"Vigilante Masculino (Terno)",activo:true,clientes:{nombre:"BCR"}}],
   personal: [{id:"22000000-0000-4000-8000-000000000001",codigo_personal:"PER-001",nombre:"MARÍA DE LOS ÁNGELES FERNÁNDEZ",dni:"12345678",cargo:"AGENTE OPERATIVO",activo:true}],
   prendas: editGarments.map((row,index)=>({id:row.id,codigo_prenda:row.codigo_prenda,nombre_prenda:row.nombre_prenda,codigo_almacen:row.codigo_almacen,precio:row.precio,activo:index!==1,asignaciones:[{id:"a"+row.id.slice(1),cliente_id:IDS.cliente,cliente:"RENIEC",renovacion:row.renovacion,genero:row.genero,cantidad:row.cantidad,activo:true}]})),
@@ -51,7 +52,7 @@ const recordsByProject=new Map<string,typeof initialRecords>();
 function recordsFor(project:string){let rows=recordsByProject.get(project);if(!rows){rows=initialRecords.map(row=>({...row}));recordsByProject.set(project,rows)}return rows}
 type CatalogRows=typeof initialCatalogRows;
 const catalogRowsByProject=new Map<string,CatalogRows>();
-function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row})),provincias:initialCatalogRows.provincias.map(row=>({...row})),puestos:initialCatalogRows.puestos.map(row=>({...row,clientes:{...row.clientes}}))};catalogRowsByProject.set(project,rows)}return rows}
+function catalogsFor(project:string){let rows=catalogRowsByProject.get(project);if(!rows){rows={clientes:initialCatalogRows.clientes.map(row=>({...row})),unidades:initialCatalogRows.unidades.map(row=>({...row,clientes:{...row.clientes}})),personal:initialCatalogRows.personal.map(row=>({...row})),prendas:initialCatalogRows.prendas.map(row=>({...row})),provincias:initialCatalogRows.provincias.map(row=>({...row})),puestos:initialCatalogRows.puestos.map(row=>({...row,clientes:{...row.clientes}})),cargos:initialCatalogRows.cargos.map(row=>({...row}))};catalogRowsByProject.set(project,rows)}return rows}
 let catalogSequence=100;
 function catalogId(){catalogSequence++;return "99000000-0000-4000-8000-"+String(catalogSequence).padStart(12,"0")}
 type VisualFilters = Partial<AdminFilters & RequirementFilters>;
@@ -87,6 +88,7 @@ async function main() {
           args.path === "next/navigation" ? 'export const usePathname=()=>window.location.pathname; export const useRouter=()=>({replace(){},refresh(){}});' :
           `const catalogs=${JSON.stringify({
             clientes: [{ id: IDS.cliente, nombre: "RENIEC", activo: true, diferencia_puestos: false }, { id: BCR.cliente, nombre: "BCR", activo: true, diferencia_puestos: true }],
+            cargos: [{ id: "99000000-0000-4000-8000-000000000001", nombre: "AGENTE DE SEGURIDAD", activo: true }, { id: "99000000-0000-4000-8000-000000000002", nombre: "SUPERVISOR", activo: true }, { id: "99000000-0000-4000-8000-000000000003", nombre: "DESCANSERO", activo: false }],
             puestos: [{ id: BCR.puestoA, cliente_id: BCR.cliente, nombre: "Vigilante Masculino", activo: true }, { id: BCR.puestoB, cliente_id: BCR.cliente, nombre: "Vigilante Masculino (Terno)", activo: true }],
             puestoPrendas: { [BCR.puestoA]: [bcrCamisa(2)], [BCR.puestoB]: [bcrCamisa(3)] },
             unidades: [{ id: BCR.unidad, cliente_id: BCR.cliente, nombre: "BCR SEDE CENTRAL", renovacion_defecto: "VERANO", activo: true }, { id: IDS.unidad, cliente_id: IDS.cliente, nombre: "OFICINA REGISTRAL ATE", renovacion_defecto: "VERANO", activo: true }, { id: "66000000-0000-4000-8000-000000000003", cliente_id: IDS.cliente, nombre: "SEDE ANDINA INVIERNO", renovacion_defecto: "INVIERNO", activo: true }],
@@ -208,6 +210,18 @@ async function main() {
         await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;
       }
       if (req.method === "PATCH") {
+        if (url.pathname.endsWith("/cabecera")) {
+          let raw = ""; for await (const chunk of req) raw += chunk.toString();
+          const input = JSON.parse(raw) as { renovacion?: string; cargo?: string; lineas_confirmadas?: string[] };
+          const payload = fixtureEdit(); const line = payload.requerimiento.detalle_requerimiento[0];
+          await delay(250);
+          if (input.renovacion === "INVIERNO" && !input.lineas_confirmadas) { sendJson({ requiere_confirmacion: true, lineas: [{ id: line.id, prenda_id: line.prenda_id, codigo: line.prendas.codigo_prenda, nombre: line.prendas.nombre_prenda, cantidad: line.cantidad }] }); return; }
+          if (input.cargo === "DESCANSERO") { sendJson({ error: "El cargo está inactivo: elige un cargo activo" }, 400); return; }
+          if (input.renovacion) { payload.requerimiento.renovacion = input.renovacion as "VERANO" | "INVIERNO"; payload.requerimiento.referencia_interna = "RENOVACION " + input.renovacion; }
+          if (input.renovacion === "INVIERNO") line.activo = false;
+          if (input.cargo && payload.requerimiento.personal) { payload.requerimiento.personal.cargo = input.cargo; payload.requerimiento.cargo = input.cargo; }
+          sendJson({ message: "Datos actualizados correctamente.", data: payload }); return;
+        }
         if (url.pathname.endsWith("/prendas")) {
           const id=url.pathname.split("/").at(-2);
           await delay(700);sendJson({data:{requerimiento:{id}}});return;

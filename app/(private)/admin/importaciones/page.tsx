@@ -8,5 +8,6 @@ export default async function ImportsPage(){
   const profile=await getCurrentProfile();
   if(!esAdminUniformes(profile?.role))redirect("/inicio");
   const {data}=await (await createClient()).from("clientes").select("id,nombre,activo").eq("activo",true).order("nombre").limit(500);
-  return <AdminImports clients={data??[]} esSuperadmin={profile?.role==="superadmin"}/>;
+  const {data:cargos}=await (await createClient()).from("cargos").select("nombre,activo").order("nombre").limit(1000);
+  return <AdminImports clients={data??[]} cargos={cargos??[]} esSuperadmin={profile?.role==="superadmin"}/>;
 }

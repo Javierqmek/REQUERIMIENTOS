@@ -116,8 +116,9 @@ test("Mantenimiento → Puestos: solo se ofrecen los clientes con la opción y e
 test("Mantenimiento → Prendas: una asignación de BCR exige el puesto; las de clientes sin puestos no lo muestran", async ({ page }) => {
   await page.goto("/admin/mantenimiento");
   await page.getByRole("tab", { name: "Prendas" }).click();
-  await page.getByLabel("Acciones de CAMISA OPERATIVA MANGA LARGA").click();
-  await page.getByRole("menuitem", { name: "Editar" }).click();
+  // La primera prenda de la lista (otras pruebas de esta suite pueden haber renombrado o desactivado las demás).
+  await page.locator('summary[aria-label^="Acciones de"]').first().click();
+  await page.getByRole("menuitem", { name: "Editar" }).first().click();
   const dialog = page.getByRole("dialog");
   const rows = dialog.getByTestId("asignaciones").getByRole("listitem");
   await expect(rows.first().getByLabel("Puesto de la asignación")).toHaveCount(0);

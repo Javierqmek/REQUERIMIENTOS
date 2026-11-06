@@ -37,7 +37,7 @@ test("Personal: sin columna cargo se pide el cargo de las personas nuevas", asyn
   await load(page);
   const input = page.getByLabel("Cargo de las personas nuevas");
   await expect(input).toHaveValue("AGENTE");
-  await input.fill("GUARDIA");
+  await input.selectOption("GUARDIA");
   expect((await preview(page)).cargo_defecto).toBe("GUARDIA");
   await page.goto("/admin/importaciones");
   await page.getByLabel("Catálogo").selectOption("personal");

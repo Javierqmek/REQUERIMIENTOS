@@ -15,7 +15,7 @@ import { useClientGarments } from "@/components/use-client-garments";
 import { genderLabel, type GenderChoice } from "@/lib/garments/gender";
 import { garmentChoices, garmentFits as fits, renovacionLabel, type Renovacion } from "@/lib/garments/renovacion";
 import { catalogTotal, formatMoney } from "@/lib/requirements/money";
-import type { Cliente, Personal, Prenda, Puesto, Unidad } from "@/lib/types";
+import type { Cargo, Cliente, Personal, Prenda, Puesto, Unidad } from "@/lib/types";
 import { createRequestId } from "@/lib/security/request-id";
 
 type Choice = { renovacion?: Renovacion; gender?: GenderChoice; puestoId?: string };
@@ -32,6 +32,7 @@ export default function NewRequirement() {
   const [gender, setGender] = useState<GenderChoice | null>(null);
   const [renovacion, setRenovacion] = useState<Renovacion | null>(null);
   const [puestoId, setPuestoId] = useState("");
+  const [cargo, setCargo] = useState("");
   const [pendingChange, setPendingChange] = useState<Choice | null>(null);
   const [lines, setLines] = useState<Prenda[]>([]);
   const [selected, setSelected] = useState("");
@@ -40,6 +41,9 @@ export default function NewRequirement() {
   const [error, setError] = useState("");
   const [successId, setSuccessId] = useState("");
   const clients = useActiveCatalog<Cliente>(supabase, "clientes", step === 2);
+  // Cargo del agente: precargado con el de su ficha y editable con la lista de cargos activos (se guarda también en la ficha).
+  const cargos = useActiveCatalog<Cargo>(supabase, "cargos", step === 2);
+  const cargoOptions = [...cargos.rows.map(c => c.nombre), ...(agent?.cargo && !cargos.rows.some(c => c.nombre === agent.cargo) ? [agent.cargo] : [])];
   const client = clients.rows.find(c => c.id === clientId);
   const units = useActiveCatalog<Unidad>(supabase, "unidades", step === 2 && Boolean(client), { column: "cliente_id", value: clientId });
   const unit = units.rows.find(u => u.id === unitId);
@@ -84,10 +88,10 @@ export default function NewRequirement() {
   function reset() {
     if (savingRef.current) return;
     setRequestId(createRequestId());
-    clearDestination(); setAgent(null); setStep(1); setSuccessId(""); setQuery(""); setAgents([]); setSearching(false);
+    clearDestination(); setAgent(null); setCargo(""); setStep(1); setSuccessId(""); setQuery(""); setAgents([]); setSearching(false);
   }
   function choose(a: Personal) {
-    clearDestination(); setAgent(a); setStep(2);
+    clearDestination(); setAgent(a); setCargo(a.cargo); setStep(2);
   }
   function changeClient(id: string) {
     setClientId(id); setUnitId(""); setPuestoId(""); setGender(null); setRenovacion(null); setPendingChange(null); setLines([]); setSelected(""); setError("");
@@ -123,7 +127,7 @@ export default function NewRequirement() {
   async function save() {
     if (!agent || savingRef.current) return;
     const parsed = requerimientoSchema.safeParse({
-      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, puesto_id: usesPuestos ? puestoId || undefined : undefined, renovacion: renovacion ?? undefined, genero: gender ?? undefined,
+      agente_id: agent.id, cliente_id: clientId, unidad_id: unitId, cargo: cargo || undefined, puesto_id: usesPuestos ? puestoId || undefined : undefined, renovacion: renovacion ?? undefined, genero: gender ?? undefined,
       detalles: lines.map(p => ({ prenda_id: p.id })),
     });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
@@ -138,6 +142,7 @@ export default function NewRequirement() {
         p_renovacion: parsed.data.renovacion,
         p_genero: parsed.data.genero,
         p_puesto_id: parsed.data.puesto_id ?? null,
+        p_cargo: parsed.data.cargo ?? null,
         p_detalles: parsed.data.detalles,
         p_request_id: requestId,
       });
@@ -193,7 +198,13 @@ export default function NewRequirement() {
       <div className="section-card">
         <h2 className="section-title">Datos del agente</h2>
         <dl className="mt-3 grid gap-x-8 sm:grid-cols-3">
-          {[["Nombre", agent?.nombre], ["DNI", agent?.dni], ["Cargo", agent?.cargo]].map(([k, v]) => <div key={k} className="min-w-0 border-t border-[#E8EDF4] py-2.5"><dt className="text-xs font-medium text-[#607089]">{k}</dt><dd className="mt-0.5 break-words text-sm font-medium text-[#172033]">{v}</dd></div>)}
+          {[["Nombre", agent?.nombre], ["DNI", agent?.dni]].map(([k, v]) => <div key={k} className="min-w-0 border-t border-[#E8EDF4] py-2.5"><dt className="text-xs font-medium text-[#607089]">{k}</dt><dd className="mt-0.5 break-words text-sm font-medium text-[#172033]">{v}</dd></div>)}
+          <div className="min-w-0 border-t border-[#E8EDF4] py-2">
+            <dt><label className="text-xs font-medium text-[#607089]" htmlFor="cargo-agente">Cargo</label></dt>
+            <dd className="mt-0.5"><select id="cargo-agente" className="input !min-h-10" value={cargo} disabled={saving || cargos.loading || cargos.error} onChange={e => setCargo(e.target.value)}>
+              {cargoOptions.map(name => <option key={name} value={name}>{name}{cargos.rows.some(c => c.nombre === name) ? "" : " (inactivo)"}</option>)}
+            </select></dd>
+          </div>
         </dl>
         <div className="mt-3 grid gap-3 border-t border-[#E8EDF4] pt-4">
           <div>

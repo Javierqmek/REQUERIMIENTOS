@@ -4,7 +4,7 @@ import type { Requerimiento } from "@/lib/types";
 
 export function RequirementFacts({ row }: { row: Requerimiento }) {
   const facts = [
-    ["Agente", row.personal?.nombre], ["DNI", row.personal?.dni], ["Cargo", row.personal?.cargo],
+    ["Agente", row.personal?.nombre], ["DNI", row.personal?.dni], ["Cargo", row.cargo ?? row.personal?.cargo],
     ["Cliente", row.clientes?.nombre ?? LEGACY_CLIENT], ["Unidad", row.unidades?.nombre ?? LEGACY_UNIT],
     ...(row.puestos?.nombre ? [["Puesto", row.puestos.nombre]] : []),
     ["Renovación", row.renovacion ? renovacionLabel(row.renovacion) : undefined],
