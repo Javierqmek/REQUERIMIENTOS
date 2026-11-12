@@ -1,14 +1,15 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PRENDA_RENOVACIONES, RENOVACIONES } from "@/lib/garments/renovacion";
+import { PRENDA_ESTADOS, prendasFilterArgs, prendasFilterShape } from "./prendas-filters";
 
 export const CATALOG_KINDS = ["clientes", "unidades", "personal", "prendas", "provincias", "puestos", "cargos"] as const;
 export type CatalogKind = typeof CATALOG_KINDS[number];
-export type CatalogResult = { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number };
+export type CatalogResult = { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number; almacenes?: string[] };
 const querySchema = z.object({
-  catalogo: z.enum(CATALOG_KINDS), q: z.string().trim().max(120).default(""),
-  cliente: z.union([z.string().uuid(), z.literal("")]).default(""),
-  genero: z.enum(["HOMBRE", "MUJER", "AMBOS", ""]).default(""),
+  catalogo: z.enum(CATALOG_KINDS), ...prendasFilterShape,
+  // Solo Prendas: Activas (por defecto) / Inactivas / Todas.
+  estado: z.enum(PRENDA_ESTADOS).default("activas"),
   page: z.coerce.number().int().min(1).max(1001).default(1),
 });
 export function parseCatalogQuery(params: URLSearchParams) {
@@ -16,6 +17,13 @@ export function parseCatalogQuery(params: URLSearchParams) {
 }
 export async function getCatalogRows(db: SupabaseClient, raw: ReturnType<typeof parseCatalogQuery>): Promise<CatalogResult> {
   const pageSize = 50;
+  if (raw.catalogo === "prendas") {
+    // Lista de prendas: incluye las SIN asignaciones y aplica búsqueda y filtros en la base.
+    const { data: prendas, error: prendasError } = await db.rpc("admin_listar_prendas", { ...prendasFilterArgs({ ...raw, estado: raw.estado }), p_limite: pageSize, p_offset: (raw.page - 1) * pageSize });
+    if (prendasError) throw new Error("No se pudo consultar el catálogo.");
+    const result = prendas as { rows: Record<string, unknown>[]; total: number; almacenes?: string[] };
+    return { ...result, page: raw.page, pageSize };
+  }
   const { data, error } = await db.rpc("admin_listar_catalogo", {
     p_catalogo: raw.catalogo, p_busqueda: raw.q || null, p_cliente_id: raw.cliente || null,
     p_genero: raw.genero || null, p_limite: pageSize, p_offset: (raw.page - 1) * pageSize,

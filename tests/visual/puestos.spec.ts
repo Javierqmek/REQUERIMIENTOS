@@ -143,7 +143,7 @@ test("Mantenimiento → Prendas: 'Exportar prendas' descarga el CSV (todo, o sol
   await expect(page.getByRole("link", { name: "Exportar prendas" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Prendas" }).click();
   const link = page.getByRole("link", { name: "Exportar prendas" });
-  await expect(link).toHaveAttribute("href", "/api/admin/prendas/exportar");
+  await expect(link).toHaveAttribute("href", "/api/admin/prendas/exportar?estado=activas");
   let [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
   expect(download.suggestedFilename()).toBe("prendas-todos-2026-11-05.csv");
   const read = async (d: typeof download) => { const stream = await d.createReadStream(); const chunks: Buffer[] = []; for await (const c of stream) chunks.push(c as Buffer); return Buffer.concat(chunks); };
@@ -155,7 +155,7 @@ test("Mantenimiento → Prendas: 'Exportar prendas' descarga el CSV (todo, o sol
   expect(text).toContain("SOLA-01");
 
   await page.getByLabel("Filtrar por cliente").selectOption({ label: "BCR" });
-  await expect(link).toHaveAttribute("href", /\/api\/admin\/prendas\/exportar\?cliente=/);
+  await expect(link).toHaveAttribute("href", /\/api\/admin\/prendas\/exportar\?cliente=.*&estado=activas/);
   [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
   expect(download.suggestedFilename()).toBe("prendas-bcr-2026-11-05.csv");
   bytes = await read(download); text = bytes.toString("utf8");

@@ -15,6 +15,7 @@ function failure(error:unknown,fallback:string){
   if(issue.code==="42501")return response({error:"No autorizado"},403);
   if(issue.code==="P0002")return response({error:issue.message??"Registro no encontrado."},404);
   if(issue.code==="22023")return response({error:issue.message??fallback},400);
+  if(issue.code==="23505"&&typeof (issue as {details?:string}).details==="string"&&/^[0-9a-f-]{36}$/i.test((issue as {details:string}).details))return response({error:issue.message??fallback,existing_id:(issue as {details:string}).details},409);
   if(issue.code==="23505"||issue.code==="55000"||issue.code==="23503"||issue.code==="23P01")return response({error:issue.message??fallback},409);
   return response({error:fallback},400);
 }

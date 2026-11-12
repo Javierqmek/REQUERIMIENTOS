@@ -48,6 +48,9 @@ const initialCatalogRows = {
   prendas: editGarments.map((row,index)=>({id:row.id,codigo_prenda:row.codigo_prenda,nombre_prenda:row.nombre_prenda,codigo_almacen:row.codigo_almacen,precio:row.precio,activo:index!==1,asignaciones:[{id:"a"+row.id.slice(1),cliente_id:IDS.cliente,cliente:"RENIEC",renovacion:row.renovacion,genero:row.genero,cantidad:row.cantidad,activo:true}]})),
   provincias: [{id:"aa100000-0000-4000-8000-000000000001",nombre:"Lima",activo:true},{id:"aa100000-0000-4000-8000-000000000002",nombre:"Arequipa",activo:true}],
 };
+// Prenda creada sin asignaciones (caso real 11AS001): debe verse en la lista como "Sin asignar".
+initialCatalogRows.prendas.push({id:"33000000-0000-4000-8000-0000000000a1",codigo_prenda:"11AS001",nombre_prenda:"CHALECO SIN ASIGNAR",codigo_almacen:"UNF1",precio:10,activo:true,asignaciones:[]} as (typeof initialCatalogRows.prendas)[number]);
+
 const recordsByProject=new Map<string,typeof initialRecords>();
 function recordsFor(project:string){let rows=recordsByProject.get(project);if(!rows){rows=initialRecords.map(row=>({...row}));recordsByProject.set(project,rows)}return rows}
 type CatalogRows=typeof initialCatalogRows;
@@ -181,8 +184,10 @@ async function main() {
       if (url.pathname === "/api/admin/prendas/exportar") {
         const cliente = url.searchParams.get("cliente");
         const assigned = [{ codigo_prenda: "0012", nombre_prenda: "CAMISA BLANCA MANGA CORTA", codigo_almacen: "UNF1", precio: "40.00", cantidad: 2, cliente: "BCR", puesto: "Vigilante Masculino", genero: "HOMBRE", renovacion: "AMBOS", activo: true }];
-        const rows = cliente ? assigned : [...assigned, { codigo_prenda: "SOLA-01", nombre_prenda: "PRENDA SIN ASIGNACION", codigo_almacen: "UNF9", precio: "9.50", cantidad: null, cliente: null, puesto: null, genero: null, renovacion: null, activo: true }];
-        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${prendasExportFilename(new Date("2026-11-05T12:00:00Z"), cliente ? "BCR" : null)}"` }); res.end(buildPrendasCsv(rows)); return;
+        const sinAsignar = url.searchParams.get("sinAsignar") === "1";
+        const sola = { codigo_prenda: "SOLA-01", nombre_prenda: "PRENDA SIN ASIGNACION", codigo_almacen: "UNF9", precio: "9.50", cantidad: null, cliente: null, puesto: null, genero: null, renovacion: null, activo: true };
+        const rows = sinAsignar ? [sola] : cliente ? assigned : [...assigned, { codigo_prenda: "SOLA-01", nombre_prenda: "PRENDA SIN ASIGNACION", codigo_almacen: "UNF9", precio: "9.50", cantidad: null, cliente: null, puesto: null, genero: null, renovacion: null, activo: true }];
+        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${prendasExportFilename(new Date("2026-11-05T12:00:00Z"), sinAsignar ? "sin-asignar" : cliente ? "BCR" : null)}"` }); res.end(buildPrendasCsv(rows)); return;
       }
       if (url.pathname === "/api/admin/catalogos") {
         if(req.method!=="GET"){
@@ -191,6 +196,7 @@ async function main() {
           if(req.method==="PATCH"){const row=rows.find(item=>item.id===input.id);if(row)row.activo=input.activo;sendJson(row??{error:"Registro no encontrado"},row?200:404);return;}
           if(req.method==="DELETE"){const index=rows.findIndex(item=>item.id===input.id);if(index<0){sendJson({error:"Registro no encontrado"},404);return;}rows.splice(index,1);sendJson({id:input.id,catalogo:kind});return;}
           const values=input.valores as Record<string,unknown>;
+          if(kind==="prendas"&&!input.id){const dup=rows.find(item=>String(item.codigo_prenda).toLowerCase()===String(values.codigo_prenda).toLowerCase());if(dup){sendJson({error:"Ya existe una prenda con ese código",existing_id:dup.id},409);return;}}
           if(kind==="clientes"&&rows.some(row=>String(row.nombre).toLowerCase()===String(values.nombre).toLowerCase()&&row.id!==input.id)){sendJson({error:"Ya existe un cliente con ese nombre"},409);return;}
           if(kind==="provincias"&&rows.some(row=>String(row.nombre).trim().toLowerCase()===String(values.nombre).trim().toLowerCase()&&row.id!==input.id)){sendJson({error:"Ya existe una provincia con ese nombre"},409);return;}
           let row=rows.find(item=>item.id===input.id);
@@ -202,12 +208,28 @@ async function main() {
         }
         const kind=(url.searchParams.get("catalogo")||"clientes") as keyof typeof catalogRows;
         let rows=[...catalogRows[kind]] as Record<string,unknown>[]; const q=(url.searchParams.get("q")||"").toLowerCase();
-        if(q)rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
+        if(q&&kind!=="prendas")rows=rows.filter(row=>JSON.stringify(row).toLowerCase().includes(q)); const client=url.searchParams.get("cliente");
         if(client&&(kind==="unidades"||kind==="puestos"))rows=rows.filter(row=>row.cliente_id===client);
-        if(client&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {cliente_id:string}[]).some(item=>item.cliente_id===client));
-        const gender=url.searchParams.get("genero");if(gender&&kind==="prendas")rows=rows.filter(row=>(row.asignaciones as {genero:string}[]).some(item=>item.genero===gender));
+                
         if(kind==="clientes"||kind==="unidades")rows=rows.map(row=>({...row,puede_eliminar:!["RENIEC","CLIENTE CON NOMBRE CORPORATIVO EXTENSO","OFICINA REGISTRAL ATE","SEDE OPERACIONAL CON NOMBRE EXTENSO – LIMA"].includes(String(row.nombre)),...(kind==="unidades"?{puede_cambiar_cliente:!String(row.nombre).includes("OFICINA")}: {})}));
-        await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50});return;
+        let almacenes:string[]|undefined;
+        if(kind==="prendas"){
+          // Misma lógica que admin_listar_prendas: búsqueda por código o nombre sin tildes; filtros sobre las asignaciones.
+          const norm=(text:string)=>text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+          const sp=url.searchParams,sin=sp.get("sinAsignar")==="1",estado=sp.get("estado")||"activas",alm=sp.get("almacen"),word=norm(sp.get("q")||"");
+          const filters={cliente:sp.get("cliente"),puesto:sp.get("puesto"),genero:sp.get("genero"),renovacion:sp.get("renovacion")};
+          const assignmentFilter=Object.values(filters).some(Boolean);
+          almacenes=[...new Set((catalogRows.prendas as {codigo_almacen:string}[]).map(row=>row.codigo_almacen))].sort();
+          rows=rows.filter(row=>{
+            const asig=row.asignaciones as {cliente_id:string;puesto_id?:string|null;genero:string;renovacion:string}[];
+            if(word&&!norm(String(row.codigo_prenda)+" "+String(row.nombre_prenda)).includes(word))return false;
+            if(alm&&row.codigo_almacen!==alm)return false;
+            if(estado!=="todas"&&(estado==="activas")!==Boolean(row.activo))return false;
+            if(sin)return !assignmentFilter&&asig.length===0;
+            return !assignmentFilter||asig.some(a=>(!filters.cliente||a.cliente_id===filters.cliente)&&(!filters.puesto||a.puesto_id===filters.puesto)&&(!filters.genero||a.genero===filters.genero)&&(!filters.renovacion||a.renovacion===filters.renovacion));
+          }).map(row=>({...row,sin_asignar:(row.asignaciones as unknown[]).length===0}));
+        }
+        await delay(150);sendJson({rows,total:rows.length,page:Number(url.searchParams.get("page")||1),pageSize:50,...(almacenes?{almacenes}:{})});return;
       }
       if (req.method === "PATCH") {
         if (url.pathname.endsWith("/cabecera")) {

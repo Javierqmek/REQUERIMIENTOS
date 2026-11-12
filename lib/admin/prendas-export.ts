@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { csvCell } from "./csv";
+import { prendasFilterArgs, type PrendasFilters } from "./prendas-filters";
 
 // Exportación de prendas en el MISMO formato que la importación (se puede corregir en Excel y volver a importar).
 // Una fila por asignación (activa o inactiva, con su estado) y, una sola vez, las prendas sin ninguna asignación.
@@ -23,8 +24,8 @@ export function buildPrendasCsv(rows: PrendaExportRow[]) {
   return String.fromCharCode(0xFEFF) + [PRENDAS_EXPORT_HEADERS.map(csvCell).join(";"), ...lines].join("\r\n") + "\r\n";
 }
 
-export async function getPrendasExport(db: SupabaseClient, clienteId?: string | null) {
-  const { data, error } = await db.rpc("admin_exportar_prendas", { p_cliente_id: clienteId || null });
+export async function getPrendasExport(db: SupabaseClient, filters: PrendasFilters) {
+  const { data, error } = await db.rpc("admin_exportar_prendas", prendasFilterArgs(filters));
   if (error) throw error;
   return (data ?? []) as PrendaExportRow[];
 }

@@ -230,6 +230,6 @@ select set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000002'
 select pg_temp.denied($q$select public.admin_exportar_prendas()$q$,'42501','un coordinador no puede exportar prendas');
 reset role;
 select pg_temp.ok((select count(*)>=4 from private.admin_catalog_audit where catalogo='puestos'),'crear y desactivar puestos queda en la auditoría');
-select pg_temp.ok((select coalesce(has_function_privilege('anon','public.admin_exportar_prendas(uuid)','execute'),false)=false),'anon no ejecuta la exportación');
+select pg_temp.ok((select coalesce(has_function_privilege('anon','public.admin_exportar_prendas(uuid,text,boolean,uuid,text,text,text,text)','execute'),false)=false),'anon no ejecuta la exportación');
 
 rollback;
